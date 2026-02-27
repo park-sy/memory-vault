@@ -1,37 +1,61 @@
 # Memory Vault
 
-AI 에이전트의 장기기억 체계. 옵시디언 vault 구조로 관리.
+AI 에이전트의 장기기억 체계. 이 디렉토리에서 claude를 실행하면 이 파일이 자동 로드된다.
 
 ## 세션 시작 프로토콜
 
-세션 시작 시 아래 순서로 읽을 것:
+**반드시 아래 순서대로 읽고 시작할 것:**
 
-1. `01-org/head.md` — 상위 지침 (SOUL)
-2. `01-org/user.md` — 사용자 정보
-3. `05-sessions/` 최신 2개 — 최근 컨텍스트
+1. `01-org/head.md` — 너의 영혼. 행동 원칙, 경계, 규율.
+2. `01-org/user.md` — 상엽 정보.
+3. `01-org/identity.md` — 너의 정체성.
+4. `05-sessions/` — 최신 2개 파일을 읽어서 최근 컨텍스트 파악.
 
-## 기억 기록 규칙
+읽은 후 간단히 인사하고 바로 대화 시작. "파일을 읽었습니다" 같은 보고 불필요.
 
-- 새 기억은 `02-knowledge/` 또는 역할별 `*-memory.md`에 기록
-- 3회 이상 검증된 패턴만 `02-knowledge/patterns/`로 승격
-- 세션 로그는 `05-sessions/YYYY-MM-DD.md`에 작성
-- 증류 대상은 `05-sessions/_distill-queue.md`에 등록
+## 역할 전환
+
+별도 tmux 세션 없이, 상엽이 말하면 역할을 전환한다:
+- "플래닝 해줘" → `01-org/product/planner.md` 읽고 planner 모드
+- "코딩 해줘" → `01-org/engineering/worker.md` 읽고 worker 모드
+- "오케스트레이션" → `01-org/ops/orchestrator.md` 읽고 orchestrator 모드
+
+역할 파일에 "읽어야 할 파일" 목록이 있으면 그것도 읽는다.
+
+## 기억 기록
+
+### 세션 중
+- 중요한 결정, 교훈, 실수 → 해당 역할의 `*-memory.md`에 바로 기록
+- 프로젝트 관련 → `03-projects/{name}/`에 기록
+
+### 세션 종료 시
+- `05-sessions/YYYY-MM-DD.md` 에 오늘 세션 요약 작성 (또는 기존 파일에 추가)
+- 증류할 만한 내용이 있으면 `05-sessions/_distill-queue.md`에 등록
+
+### 승격 규칙
+- 3회 이상 반복 검증된 패턴 → `02-knowledge/patterns/`로 승격
+- 중요한 아키텍처 결정 → `04-decisions/`에 ADR 작성
+- 새 실수 패턴 → `02-knowledge/mistakes/`에 기록
 
 ## 디렉토리 구조
 
 | 디렉토리 | 용도 |
 |----------|------|
-| `00-MOC/` | Maps of Content (진입점, 인덱스) |
-| `01-org/` | 조직 구조 (head, user, 부서별 역할/기억) |
-| `02-knowledge/` | 공유 지식 (패턴, 스택, 컨벤션, 실수 DB) |
-| `03-projects/` | 프로젝트별 컨텍스트 |
+| `00-MOC/` | Maps of Content — 전체 인덱스, 조직도, 지식맵 |
+| `01-org/` | 조직 — head(원칙), user(상엽), identity(얍), 부서별 역할+기억 |
+| `02-knowledge/` | 공유 지식 — patterns, stack, conventions, mistakes |
+| `03-projects/` | 프로젝트별 컨텍스트 (overview, tasks, backlog) |
 | `04-decisions/` | ADR (Architecture Decision Records) |
 | `05-sessions/` | 세션 로그 → 증류 → permanent note |
-| `06-skills/` | 공유 스킬 (방법론 문서) |
-| `templates/` | 노트 템플릿 |
+| `06-skills/` | 방법론 문서 (feature-pipeline, planner, auto-dev) |
+| `templates/` | 옵시디언 노트 템플릿 |
 
-## 위키링크 규칙
+## 멀티세션 (필요 시)
 
-- 부서 파일(`_department.md`)에서 `[[위키링크]]`로 상호 참조
-- 역할 파일에서는 **절대경로**로 명시 (`--append-system-prompt`용)
-- `02-knowledge/`가 부서 간 공유 허브
+tmux 세션풀이 필요하면 아래 코드를 호출:
+```bash
+bash /Users/hiyeop/.openclaw/workspace/skills/auto-dev/session_init.sh init-pool 3
+bash /Users/hiyeop/.openclaw/workspace/skills/auto-dev/session_init.sh status
+bash /Users/hiyeop/.openclaw/workspace/skills/auto-dev/session_init.sh teardown
+```
+역할 파일은 이 vault에서 자동으로 가져간다 (`config.json`의 `memory_vault` 설정).
