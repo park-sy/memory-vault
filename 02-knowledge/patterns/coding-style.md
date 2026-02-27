@@ -1,3 +1,13 @@
+---
+type: pattern
+importance: 8
+created: 2026-02-25
+last_accessed: 2026-02-27
+access_count: 1
+tags: [coding, immutability, file-organization]
+source: manual
+---
+
 # Coding Style
 
 ## Immutability (CRITICAL)

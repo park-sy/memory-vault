@@ -1,6 +1,8 @@
 ---
 type: session
-date: "{{date:YYYY-MM-DD}}"
+importance: 5
+created: "{{date:YYYY-MM-DD}}"
+tags: []
 distilled: false
 ---
 

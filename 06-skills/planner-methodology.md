@@ -1,3 +1,12 @@
+---
+type: skill
+importance: 8
+created: 2026-02-25
+last_accessed: 2026-02-27
+access_count: 1
+tags: [planner, spec, methodology, interview]
+---
+
 # Planner Skill — Spec 작성 방법론
 
 ## 개요

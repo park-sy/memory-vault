@@ -1,3 +1,13 @@
+---
+type: pattern
+importance: 9
+created: 2026-02-25
+last_accessed: 2026-02-27
+access_count: 1
+tags: [design, principles, architecture, reject-history]
+source: distill
+---
+
 # Design Principles — 상엽의 설계 방향
 
 plan 생성 시 이 원칙을 반드시 따른다. reject 피드백이 누적되며 점점 정교해진다.

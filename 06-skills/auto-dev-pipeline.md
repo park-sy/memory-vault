@@ -1,3 +1,12 @@
+---
+type: skill
+importance: 8
+created: 2026-02-23
+last_accessed: 2026-02-27
+access_count: 1
+tags: [auto-dev, pipeline, orchestration, tmux]
+---
+
 # Auto-Dev Pipeline Skill
 
 Feature 개발 파이프라인 제어. 3-Tier 세션 구조 오케스트레이션.

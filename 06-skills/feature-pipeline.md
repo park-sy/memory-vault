@@ -1,3 +1,12 @@
+---
+type: skill
+importance: 8
+created: 2026-02-22
+last_accessed: 2026-02-27
+access_count: 1
+tags: [pipeline, feature-dev, skill-first, mcp]
+---
+
 # Feature Pipeline v2 — Skill-First 개발 파이프라인
 
 ## 개요

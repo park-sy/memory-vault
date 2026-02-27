@@ -3,6 +3,10 @@ type: project
 name: memory-vault
 status: active
 stack: ["Obsidian", "Git", "Markdown"]
+importance: 8
+last_accessed: 2026-02-27
+access_count: 1
+tags: [project, memory, obsidian, long-term-memory]
 ---
 
 # memory-vault

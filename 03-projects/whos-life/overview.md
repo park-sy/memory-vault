@@ -3,6 +3,10 @@ type: project
 name: whos-life
 status: active
 stack: ["NiceGUI", "SQLite WAL", "MCP", "Tailscale"]
+importance: 8
+last_accessed: 2026-02-27
+access_count: 1
+tags: [project, productivity, ai-agent, local-first]
 ---
 
 # whos-life

@@ -1,3 +1,12 @@
+---
+type: role-memory
+importance: 9
+created: 2026-02-25
+last_accessed: 2026-02-27
+access_count: 1
+tags: [worker, engineering, lessons]
+---
+
 # Worker Memory
 마지막 업데이트: 2026-02-25
 
