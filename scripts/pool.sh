@@ -6,7 +6,7 @@
 #
 # Usage:
 #   pool.sh init [size] [--role NAME] [--dir PATH]
-#                              워커 세션 생성 (default: 3, role: worker)
+#                              워커 세션 생성 (default: 3, role: coder)
 #   pool.sh status             전체 상태 출력
 #   pool.sh send <N> <msg>     워커 N에 메시지 전송
 #   pool.sh capture <N> [lines] 워커 N의 최근 출력 캡처
@@ -22,17 +22,33 @@ DEFAULT_PROJECT_DIR="${HOME}/dev"
 # ── Role Resolution ────────────────────────────────────────
 
 _resolve_role() {
-    local role_name="${1:-worker}"
+    local role_name="${1:-coder}"
 
     case "$role_name" in
-        worker)
-            echo "${VAULT_DIR}/01-org/engineering/worker.md"
-            ;;
         planner)
-            echo "${VAULT_DIR}/01-org/product/planner.md"
+            echo "${VAULT_DIR}/01-org/core/planner/role.md"
+            ;;
+        researcher)
+            echo "${VAULT_DIR}/01-org/core/researcher/role.md"
+            ;;
+        reviewer)
+            echo "${VAULT_DIR}/01-org/core/reviewer/role.md"
+            ;;
+        qa)
+            echo "${VAULT_DIR}/01-org/core/qa/role.md"
+            ;;
+        coder)
+            echo "${VAULT_DIR}/01-org/core/coder/role.md"
+            ;;
+        web-searcher)
+            echo "${VAULT_DIR}/01-org/core/web-searcher/role.md"
             ;;
         orchestrator)
-            echo "${VAULT_DIR}/01-org/ops/orchestrator.md"
+            echo "${VAULT_DIR}/01-org/enabling/orchestrator/role.md"
+            ;;
+        worker)
+            echo "[warn] 'worker' is deprecated. Use: planner, researcher, reviewer, qa, coder" >&2
+            echo ""
             ;;
         /*)
             # 절대 경로 직접 지정
@@ -114,7 +130,7 @@ _parse_flags() {
 cmd_init() {
     _parse_flags "$@"
     local size="${REMAINING_ARGS[0]:-3}"
-    local role_name="${FLAG_ROLE:-worker}"
+    local role_name="${FLAG_ROLE:-coder}"
     local project_dir="${FLAG_DIR:-$DEFAULT_PROJECT_DIR}"
 
     local role_file
@@ -130,7 +146,7 @@ cmd_init() {
             continue
         fi
 
-        tmux new-session -d -s "$name" -c "$project_dir"
+        tmux new-session -d -s "$name" -e "CC_SESSION=$name" -c "$project_dir"
         sleep 0.5
         tmux send-keys -t "$name" "$(_build_worker_cmd "$role_file")" Enter
         echo "  [ok] $name created (role: ${role_name})"
@@ -169,7 +185,18 @@ cmd_status() {
 cmd_send() {
     local num="$1"
     shift
-    local msg="$*"
+
+    # Check for --direct flag
+    local direct=false
+    local msg_args=()
+    for arg in "$@"; do
+        if [[ "$arg" == "--direct" ]]; then
+            direct=true
+        else
+            msg_args+=("$arg")
+        fi
+    done
+    local msg="${msg_args[*]}"
     local name="${PREFIX}-${num}"
 
     if ! tmux has-session -t "$name" 2>/dev/null; then
@@ -177,8 +204,31 @@ cmd_send() {
         return 1
     fi
 
-    _send_text "$name" "$msg"
-    echo "[sent] → $name"
+    if [[ "$direct" == true ]]; then
+        # Direct tmux injection (no DB record)
+        _send_text "$name" "$msg"
+        echo "[sent:direct] → $name"
+    else
+        # MsgBus: record in DB + direct tmux delivery + mark processed
+        local msg_id
+        msg_id=$(python3 "${VAULT_DIR}/scripts/msgbus.py" send \
+            --from cc-orchestration \
+            --to "$name" \
+            --type task \
+            --payload "$msg" 2>/dev/null)
+
+        if [[ -n "$msg_id" && "$msg_id" =~ ^[0-9]+$ ]]; then
+            _send_text "$name" "$msg"
+            # Mark as processed (delivered directly)
+            python3 "${VAULT_DIR}/scripts/msgbus.py" ack "$msg_id" 2>/dev/null || true
+            echo "[sent] → $name (msgbus #${msg_id})"
+        else
+            # Fallback: msgbus failed, send directly
+            echo "[warn] msgbus unavailable, falling back to direct send" >&2
+            _send_text "$name" "$msg"
+            echo "[sent:direct] → $name"
+        fi
+    fi
 }
 
 cmd_capture() {
@@ -230,7 +280,7 @@ cmd_reset() {
     local name="${PREFIX}-${num}"
 
     # role 지정 없으면 기존 worker 기본값
-    local role_name="${FLAG_ROLE:-worker}"
+    local role_name="${FLAG_ROLE:-coder}"
     local project_dir="${FLAG_DIR:-$DEFAULT_PROJECT_DIR}"
 
     local role_file
@@ -246,10 +296,19 @@ cmd_reset() {
         fi
     fi
 
-    tmux new-session -d -s "$name" -c "$project_dir"
+    tmux new-session -d -s "$name" -e "CC_SESSION=$name" -c "$project_dir"
     sleep 0.5
     tmux send-keys -t "$name" "$(_build_worker_cmd "$role_file")" Enter
     echo "  [ok] $name restarted (role: ${role_name})"
+}
+
+cmd_watch() {
+    echo "[deprecated] watch is no longer needed. Messages are delivered via Stop hook (inbox-deliver.py)."
+    echo "Use 'python3 scripts/msgbus.py status' to check message bus state."
+}
+
+cmd_watch_once() {
+    python3 "${VAULT_DIR}/scripts/msgbus.py" status
 }
 
 # ── Main ─────────────────────────────────────────────────────
@@ -279,24 +338,31 @@ case "${1:-help}" in
         fi
         shift
         cmd_reset "$@" ;;
+    watch)
+        cmd_watch "${2:-120}" ;;
+    watch-once)
+        cmd_watch_once ;;
     *)
         echo "pool.sh — Worker Pool Management"
         echo ""
         echo "Commands:"
         echo "  init [size] [--role NAME] [--dir PATH]"
-        echo "                        Create worker sessions (default: 3, role: worker)"
+        echo "                        Create worker sessions (default: 3, role: coder)"
         echo "  status                Show pool status"
-        echo "  send <N> <msg>        Send message to worker N"
+        echo "  send <N> <msg>        Send via msgbus + tmux delivery"
+        echo "  send <N> --direct <msg> Send directly via tmux (no DB record)"
         echo "  capture <N> [lines]   Capture worker N output"
         echo "  teardown              Kill all workers"
         echo "  reset <N> [--role NAME]  Restart worker N (optionally change role)"
+        echo "  watch-once            Show msgbus status"
         echo ""
-        echo "Roles: worker (default), planner, orchestrator, or absolute path"
+        echo "Roles: planner, researcher, reviewer, qa, coder (default), web-searcher, orchestrator"
+        echo "       or absolute path to role file"
         echo ""
         echo "Examples:"
-        echo "  pool.sh init 3                          # 3 workers (default)"
+        echo "  pool.sh init 3                          # 3 coders (default)"
         echo "  pool.sh init 2 --role planner            # 2 planners"
-        echo "  pool.sh init 1 --role worker --dir ~/dev/myproject"
-        echo "  pool.sh reset 2 --role planner           # restart as planner"
+        echo "  pool.sh init 1 --role coder --dir ~/dev/myproject"
+        echo "  pool.sh reset 2 --role researcher        # restart as researcher"
         ;;
 esac

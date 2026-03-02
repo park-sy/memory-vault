@@ -1,4 +1,5 @@
 {
+  "interfaceFontSize": 14,
   "alwaysUpdateLinks": true,
   "newLinkFormat": "relative",
   "useMarkdownLinks": false,

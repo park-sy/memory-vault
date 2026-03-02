@@ -10,3 +10,30 @@
 # Temp
 *.tmp
 *.bak
+
+# Generated
+vault-dashboard.html
+.context-brief.md
+
+# Secrets
+.env
+
+# Runtime data (SQLite)
+storage/msgbus.db
+storage/msgbus.db-wal
+storage/msgbus.db-shm
+
+# Feature Factory (SQLite runtime)
+storage/feature-factory.db
+storage/feature-factory.db-wal
+storage/feature-factory.db-shm
+storage/feature-factory.pid
+
+# Web automation (SQLite runtime)
+storage/web-auto.db
+storage/web-auto.db-wal
+storage/web-auto.db-shm
+storage/screenshots/
+
+# Claude Code
+.claude/

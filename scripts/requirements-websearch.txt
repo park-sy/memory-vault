@@ -1,0 +1,11 @@
+duckduckgo-search>=7.0    # DDG 검색 (키 불필요)
+googlesearch-python>=1.3  # Google 검색 (키 불필요, 차단위험)
+trafilatura>=2.0          # 콘텐츠 추출 (권장)
+feedparser>=6.0           # RSS/Atom (선택)
+wikipedia>=1.4            # 위키피디아 (선택)
+# naver → stdlib urllib (NAVER_CLIENT_ID/SECRET env 필요)
+# hn, reddit → stdlib urllib (키 불필요)
+# github → gh CLI subprocess (gh auth 필요)
+
+# ── Tier 2: Playwright (web-auto.py) ──────────────────
+playwright>=1.40          # 브라우저 자동화 (Tier 2)
