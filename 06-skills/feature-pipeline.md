@@ -2,9 +2,8 @@
 type: skill
 importance: 8
 created: 2026-02-22
-last_accessed: 2026-02-27
-access_count: 10
 tags: [pipeline, feature-dev, skill-first, cli]
+
 ---
 
 # Feature Pipeline v2 — Skill-First 개발 파이프라인
@@ -19,7 +18,7 @@ LLM은 판단만, 실행은 코드로. 토큰 효율 극대화.
 |------|------|------|------|
 | 오케스트레이션 | `cc-orchestration` tmux | 태스크 관리/배정. 직접 작업 안 함 | 1 |
 | 계획 전문가 | `cc-planner` tmux | `idea → spec` 전담. 사용자와 대화하며 spec 구체화 | 1 |
-| Worker | `cc-pool-{1..N}` | `designing → coding → done` 실행 | N |
+| Worker | `cc-pool-{1..N}` | `designing → testing → coding → review → done` 실행 | N |
 
 ### 핵심 흐름
 ```
@@ -58,7 +57,7 @@ LLM은 판단만, 실행은 코드로. 토큰 효율 극대화.
 ## 파이프라인 단계
 
 ```
-idea → spec(planner) → [spec 승인] → queued → designing(계획 생성) → [계획 승인] → designing(실행) → testing ⇄ designing → [승인] → stable → coding(계획 생성) → [계획 승인] → coding(실행) → done
+idea → spec(planner) → [spec 승인] → queued → designing(계획 생성) → [계획 승인] → designing(실행) → testing ⇄ designing → [승인] → stable → coding(계획 생성) → [계획 승인] → coding(실행) → review → done
 ```
 
 ```
@@ -68,12 +67,12 @@ idea → spec(planner) → [spec 승인] → queued → designing(계획 생성)
 │                                                               │
 │  ┌──────┐   ┌──────┐   ╔═════════╗   ┌────────┐             │
 │  │ idea │──▶│ spec │──▶║ spec승인 ║──▶│ queued │             │
-│  │coder │   │planner│   ╚═════════╝   └───┬────┘             │
+│  │planner│   │planner│   ╚═════════╝   └───┬────┘             │
 │  └──────┘   └──────┘                      │                  │
 │                                           ▼                  │
 │                               ┌────────────────┐             │
 │                               │   designing    │             │
-│                               │    coder       │             │
+│                               │    planner     │             │
 │                               └───────┬────────┘             │
 │                                       ▼                      │
 │                               ╔═══════════════╗              │
@@ -99,28 +98,37 @@ idea → spec(planner) → [spec 승인] → queued → designing(계획 생성)
 │                          ╚═════╤═══════╝                     │
 │                                ▼                             │
 │                          ┌───────────┐                       │
-│                          │   done    │                       │
-│                          │  report   │                       │
-│                          └───────────┘                       │
-│                                                               │
+│                          │  review   │                       │
+│                          │ reviewer  │                       │
+│                          └─────┬─────┘                       │
+│                                │                             │
+│                    APPROVE     │     REQUEST_CHANGES          │
+│                    ┌───────────┼───────────┐                 │
+│                    ▼           │           ▼                  │
+│              ┌───────────┐    │    ┌────────────┐            │
+│              │   done    │    │    │  coding    │            │
+│              │  report   │    │    │  (복귀)    │            │
+│              └───────────┘    │    └────────────┘            │
+│                               │                              │
 │  ┌───┐ 자동단계    ╔══════╗ 승인게이트 (사용자 개입)          │
 │  └───┘             ╚══════╝                                  │
-│  coder─구현/분석   planner─spec   qa─검증                    │
+│  planner─설계/명세  coder─구현  qa─검증  reviewer─리뷰       │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 ### 단계별 역할
 
-| 단계 | 세션 | 하는 일 | 산출물 |
+| 단계 | 역할 | 하는 일 | 산출물 |
 |---|---|---|---|
 | idea | planner | 아이디어 등록 + planner 할당 | 제목 + 설명 |
 | spec | planner | 상엽과 대화하며 spec 구체화 (3가지 관점 필수) | spec.md |
 | queued | - | spec 승인 후 대기 | - |
-| designing | SKILL.md + config.json 작성 | skills/{name}/SKILL.md |
-| testing | Command-Level Verification: 각 CLI command 개별 검증 + codification 분석 | Command Test Results + codification 리포트 |
-| stable | 충분히 검증됨, coding 슬롯 대기 | - |
-| coding | codification 분석 기반 service.py + render.py 구현 | whos-life feature 완성 |
-| done | skill + code 혼합 운영 | 최종 구조 |
+| designing | planner | SKILL.md + config.json 작성 | skills/{name}/SKILL.md |
+| testing | qa | Command-Level Verification: 각 CLI command 개별 검증 + codification 분석 | Command Test Results + codification 리포트 |
+| stable | - | 충분히 검증됨, coding 슬롯 대기 | - |
+| coding | coder | codification 분석 기반 service.py + render.py 구현 | whos-life feature 완성 |
+| review | reviewer | 코드 품질, 보안, 패턴 일관성 검증 | APPROVE / REQUEST_CHANGES |
+| done | - | 최종 보고 | 최종 구조 |
 
 ### SKILL.md 형식 규격 (designing 산출물)
 
@@ -217,11 +225,12 @@ whos-life feature travel get-trips --json | jq '.items[]'
 - CRUD 시나리오 (어떤 화면에서 어떤 데이터가 생성/조회/수정/삭제되는지)
 - migration SQL 초안
 
-### 승인 게이트 (4개)
+### 승인 게이트 (5개)
 1. **spec → queued**: "이거 만들 만한가?" — `whos-life feature dev-queue approve-to-queue {id}`
 2. **designing 계획**: "이 설계 방향 맞나?" — `whos-life feature dev-queue approve-plan {id}`
 3. **testing → stable**: "충분히 검증됐나?" — `whos-life feature dev-queue approve-stable {id}`
 4. **coding 계획**: "이 구현 방향 맞나?" — `whos-life feature dev-queue approve-plan {id}`
+5. **review → done**: "코드 품질 충분한가?" — reviewer APPROVE 시 자동 전환, REQUEST_CHANGES 시 coding 복귀
 
 ## 실행 규칙
 

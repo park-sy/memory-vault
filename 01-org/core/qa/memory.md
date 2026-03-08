@@ -2,9 +2,8 @@
 type: role-memory
 importance: 9
 created: 2026-02-28
-last_accessed: 2026-03-02
-access_count: 2
 tags: [qa, core, lessons]
+
 ---
 
 # QA Memory

@@ -84,8 +84,11 @@ def main():
     )
     parser.add_argument(
         "--channel", default=None,
-        choices=["ops", "approval", "report", "clone"],
-        help="Telegram topic channel",
+        help="Telegram topic channel (ops, approval, report, clone, or dynamic name)",
+    )
+    parser.add_argument(
+        "--group", default="default", choices=["default", "boss"],
+        help="Target Telegram group (default: main group, boss: AI Boss group)",
     )
 
     args = parser.parse_args()
@@ -97,6 +100,8 @@ def main():
         payload["actions"] = args.actions
     if args.channel:
         payload["channel"] = args.channel
+    if args.group != "default":
+        payload["group"] = args.group
 
     expires_at = None
     if args.expires_in:

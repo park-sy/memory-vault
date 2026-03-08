@@ -2,10 +2,9 @@
 type: knowledge
 importance: 7
 created: "2026-02-28"
-last_accessed: "2026-02-28"
-access_count: 1
 tags: [openclaw, messenger, telegram, architecture, reference]
 source: "codebase-analysis"
+
 ---
 
 # OpenClaw 메신저 통신 아키텍처

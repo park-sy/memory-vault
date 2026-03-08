@@ -30,15 +30,36 @@ class TopicConfig:
     approval: Optional[int] = None
     report: Optional[int] = None
     clone: Optional[int] = None
+    extras: tuple = ()  # ((name, topic_id), ...) — frozen이므로 tuple of tuples
 
     def get(self, name: str) -> Optional[int]:
-        return getattr(self, name, None)
+        # 고정 필드 먼저 확인
+        fixed = getattr(self, name, None)
+        if fixed is not None and name in ("ops", "approval", "report", "clone"):
+            return fixed
+        # extras에서 검색
+        for extra_name, topic_id in self.extras:
+            if extra_name == name:
+                return topic_id
+        return None
+
+    def all_topics(self) -> dict:
+        """모든 토픽 (고정 + 동적) 반환."""
+        result = {}
+        for name in ("ops", "approval", "report", "clone"):
+            val = getattr(self, name, None)
+            if val is not None:
+                result[name] = val
+        for extra_name, topic_id in self.extras:
+            result[extra_name] = topic_id
+        return result
 
 
 @dataclass(frozen=True)
 class TelegramConfig:
     bot_token: str
     chat_id: str
+    boss_chat_id: str = ""
     topics: TopicConfig = TopicConfig()
     api_base: str = "https://api.telegram.org"
     timeout: int = 10
@@ -86,14 +107,34 @@ def load_config() -> TelegramConfig:
         val = os.environ.get(key, "")
         return int(val) if val else None
 
+    # 고정 토픽
+    fixed_keys = {"OPS", "APPROVAL", "REPORT", "CLONE"}
+    # 동적 토픽: TELEGRAM_TOPIC_* 중 고정 4개 외 나머지
+    extras = []
+    prefix = "TELEGRAM_TOPIC_"
+    for key, val in os.environ.items():
+        if key.startswith(prefix) and val:
+            suffix = key[len(prefix):]
+            if suffix not in fixed_keys:
+                try:
+                    extras.append((suffix.lower(), int(val)))
+                except ValueError:
+                    pass
+
     topics = TopicConfig(
         ops=_int_or_none("TELEGRAM_TOPIC_OPS"),
         approval=_int_or_none("TELEGRAM_TOPIC_APPROVAL"),
         report=_int_or_none("TELEGRAM_TOPIC_REPORT"),
         clone=_int_or_none("TELEGRAM_TOPIC_CLONE"),
+        extras=tuple(extras),
     )
 
-    return TelegramConfig(bot_token=bot_token, chat_id=chat_id, topics=topics)
+    boss_chat_id = os.environ.get("TELEGRAM_BOSS_CHAT_ID", "")
+
+    return TelegramConfig(
+        bot_token=bot_token, chat_id=chat_id,
+        boss_chat_id=boss_chat_id, topics=topics,
+    )
 
 
 def _load_dotenv() -> None:
@@ -152,10 +193,18 @@ def _api_call(config: TelegramConfig, method: str, payload: dict) -> dict:
         raise RuntimeError(f"Telegram connection error: {e.reason}") from e
 
 
-def send_message(config: TelegramConfig, message: TelegramMessage) -> dict:
-    """Send a TelegramMessage object."""
+def send_message(
+    config: TelegramConfig,
+    message: TelegramMessage,
+    chat_id: Optional[str] = None,
+) -> dict:
+    """Send a TelegramMessage object.
+
+    Args:
+        chat_id: Override target chat. Defaults to config.chat_id.
+    """
     payload = {
-        "chat_id": config.chat_id,
+        "chat_id": chat_id or config.chat_id,
         "text": message.text,
         "parse_mode": message.parse_mode,
     }
@@ -168,10 +217,24 @@ def send_message(config: TelegramConfig, message: TelegramMessage) -> dict:
     return _api_call(config, "sendMessage", payload)
 
 
-def send_text(config: TelegramConfig, text: str, topic: Optional[str] = None) -> dict:
-    """Send a simple text message. topic: 'ops', 'approval', 'report', 'clone'."""
+def send_text(
+    config: TelegramConfig,
+    text: str,
+    topic: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> dict:
+    """Send a simple text message.
+
+    Args:
+        topic: Topic channel name ('ops', 'approval', 'report', 'clone').
+        chat_id: Override target chat. Defaults to config.chat_id.
+    """
     thread_id = config.topics.get(topic) if topic else None
-    return send_message(config, TelegramMessage(text=text, message_thread_id=thread_id))
+    return send_message(
+        config,
+        TelegramMessage(text=text, message_thread_id=thread_id),
+        chat_id=chat_id,
+    )
 
 
 def send_with_actions(
@@ -180,11 +243,13 @@ def send_with_actions(
     actions: List[str],
     callback_prefix: str,
     topic: Optional[str] = None,
+    chat_id: Optional[str] = None,
 ) -> dict:
     """Send a message with inline keyboard buttons.
 
     Each action becomes a button. callback_data format: {callback_prefix}:{action}
     topic: 'ops', 'approval', 'report', 'clone'.
+    chat_id: Override target chat. Defaults to config.chat_id.
     """
     buttons = []
     for action in actions:
@@ -195,7 +260,90 @@ def send_with_actions(
     reply_markup = {"inline_keyboard": [buttons]}
     thread_id = config.topics.get(topic) if topic else None
     message = TelegramMessage(text=text, reply_markup=reply_markup, message_thread_id=thread_id)
-    return send_message(config, message)
+    return send_message(config, message, chat_id=chat_id)
+
+
+def send_document(
+    config: TelegramConfig,
+    file_path: str,
+    caption: Optional[str] = None,
+    topic: Optional[str] = None,
+    reply_markup: Optional[dict] = None,
+) -> dict:
+    """Send a file as a Telegram document (multipart/form-data).
+
+    caption is limited to 1024 chars by Telegram API.
+    """
+    import mimetypes
+
+    url = f"{config.base_url}/sendDocument"
+    boundary = "----TelegramBotBoundary9876543210"
+
+    text_parts: list = []
+
+    text_parts.append(
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+        f"{config.chat_id}\r\n"
+    )
+
+    thread_id = config.topics.get(topic) if topic else None
+    if thread_id:
+        text_parts.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="message_thread_id"\r\n\r\n'
+            f"{thread_id}\r\n"
+        )
+
+    if caption:
+        text_parts.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+            f"{caption[:1024]}\r\n"
+        )
+
+    if reply_markup:
+        markup_json = json.dumps(reply_markup, ensure_ascii=False)
+        text_parts.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="reply_markup"\r\n\r\n'
+            f"{markup_json}\r\n"
+        )
+
+    text_data = "".join(text_parts).encode("utf-8")
+
+    filename = os.path.basename(file_path)
+    mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    with open(file_path, "rb") as f:
+        file_content = f.read()
+
+    file_header = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="document"; filename="{filename}"\r\n'
+        f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode("utf-8")
+
+    closing = f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    body = text_data + file_header + file_content + closing
+
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=config.timeout) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            if not result.get("ok"):
+                raise RuntimeError(f"Telegram API error: {result.get('description', 'unknown')}")
+            return result.get("result", {})
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Telegram HTTP {e.code}: {err_body}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Telegram connection error: {e.reason}") from e
 
 
 def answer_callback_query(
@@ -224,6 +372,21 @@ def edit_message_text(
         "parse_mode": parse_mode,
     }
     return _api_call(config, "editMessageText", payload)
+
+
+def create_forum_topic(
+    config: TelegramConfig,
+    name: str,
+    icon_color: Optional[int] = None,
+) -> dict:
+    """Create a new forum topic in the group chat.
+
+    Returns API result with message_thread_id (= topic_id).
+    """
+    payload = {"chat_id": config.chat_id, "name": name}
+    if icon_color is not None:
+        payload["icon_color"] = icon_color
+    return _api_call(config, "createForumTopic", payload)
 
 
 def get_updates(
@@ -255,7 +418,7 @@ def get_updates(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def is_authorized(update: dict, config: TelegramConfig) -> bool:
-    """Check if the update comes from the authorized chat."""
+    """Check if the update comes from an authorized chat (main or boss group)."""
     chat_id = None
 
     if "message" in update:
@@ -263,7 +426,11 @@ def is_authorized(update: dict, config: TelegramConfig) -> bool:
     elif "callback_query" in update:
         chat_id = str(update["callback_query"].get("message", {}).get("chat", {}).get("id", ""))
 
-    return chat_id == str(config.chat_id)
+    allowed = {str(config.chat_id)}
+    if config.boss_chat_id:
+        allowed.add(str(config.boss_chat_id))
+
+    return chat_id in allowed
 
 
 def parse_command(text: str) -> tuple:
@@ -281,3 +448,27 @@ def parse_command(text: str) -> tuple:
     command = command.split("@")[0]
     arg_text = parts[1] if len(parts) > 1 else ""
     return (command, arg_text)
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+def _cli_create_topic() -> None:
+    """CLI: python3 scripts/telegram_api.py create-topic <name>"""
+    import sys as _sys
+    if len(_sys.argv) < 3:
+        print("Usage: telegram_api.py create-topic <name>", file=_sys.stderr)
+        _sys.exit(1)
+    topic_name = _sys.argv[2]
+    config = load_config()
+    result = create_forum_topic(config, topic_name)
+    topic_id = result.get("message_thread_id")
+    print(json.dumps({"name": topic_name, "topic_id": topic_id}))
+    print(f"\nAdd to .env:  TELEGRAM_TOPIC_{topic_name.upper()}={topic_id}", file=_sys.stderr)
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    if len(_sys.argv) >= 2 and _sys.argv[1] == "create-topic":
+        _cli_create_topic()
+    else:
+        print("Usage: telegram_api.py create-topic <name>", file=_sys.stderr)

@@ -3,8 +3,7 @@ type: knowledge
 importance: 7
 created: 2026-03-01
 tags: [infrastructure, web-automation, playwright, tier-cascade]
-last_accessed: 2026-03-01
-access_count: 1
+
 ---
 
 # Web Automation — 4-Tier Cascade

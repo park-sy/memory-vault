@@ -7,6 +7,8 @@ and drives pipeline state transitions.
 import json
 import logging
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -23,6 +25,7 @@ from . import approval_handler
 from . import notifier
 from . import report
 from . import dashboard
+from . import session_scanner
 
 # Import msgbus
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -287,10 +290,18 @@ def _send_help() -> None:
 
 def _handle_stage_complete(task_id: int, stage: str, sender: str) -> None:
     """Handle a worker completing a pipeline stage."""
-    # Release the worker
+    # Idempotency guard — 이미 처리된 경우 (assignment 없음) 전체 skip
     assignment = db.get_active_assignment_for_task(task_id)
-    if assignment:
-        wm.release_worker(assignment.id)
+    if not assignment:
+        log.info(
+            "stage_complete ignored (no active assignment): task=%d stage=%s sender=%s",
+            task_id, stage, sender,
+        )
+        return
+
+    # Release the worker
+    _scan_and_record_tokens(task_id, stage, assignment)
+    wm.release_worker(assignment.id)
 
     db.log_event(task_id, "stage_end", {"stage": stage, "sender": sender})
 
@@ -333,6 +344,42 @@ def _handle_stage_complete(task_id: int, stage: str, sender: str) -> None:
             log.error("Report generation failed for task %d: %s", task_id, e)
 
         notifier.notify_feature_done(task_id, title)
+
+
+# ── Token Scanning ──────────────────────────────────────────────────────────
+
+def _scan_and_record_tokens(task_id: int, stage: str, assignment) -> None:
+    """워커 세션의 JSONL 파일을 스캔해서 토큰 사용량 기록."""
+    try:
+        assigned_ts = _parse_timestamp(assignment.assigned_at)
+        result = session_scanner.scan_session_tokens(DEFAULT_PROJECT_DIR, assigned_ts)
+        if result is None:
+            return
+
+        now_ts = time.time()
+        duration_ms = int((now_ts - assigned_ts) * 1000)
+
+        db.record_stage_tokens(
+            task_id=task_id, stage=stage, model=result.model,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            cost_usd="0",
+            duration_ms=duration_ms,
+            session_id=result.session_id,
+        )
+        log.info("Token scan: task=%d stage=%s tokens=%d", task_id, stage, result.total_tokens)
+    except Exception as e:
+        log.warning("Token scan failed for task %d stage %s: %s", task_id, stage, e)
+
+
+def _parse_timestamp(iso_str: str) -> float:
+    """ISO 문자열 → Unix timestamp."""
+    dt = datetime.fromisoformat(iso_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
 
 
 # ── Pipeline Tick ────────────────────────────────────────────────────────────
@@ -385,7 +432,23 @@ def tick_pipeline() -> None:
         current_in_stage = stage_counts.get(stage, 0)
 
         # Drive state machine
-        if stage == "queued":
+        if stage == "idea":
+            # idea: assign worker to analyze and produce spec
+            idea_limit = STAGE_CONCURRENCY.get("idea", 2)
+            if stage_counts.get("idea", 0) >= idea_limit:
+                continue
+            if _try_assign_worker(task_id, title, "idea"):
+                stage_counts["idea"] = stage_counts.get("idea", 0) + 1
+
+        elif stage == "spec":
+            # spec: assign planner to write spec with user
+            spec_limit = STAGE_CONCURRENCY.get("spec", 2)
+            if stage_counts.get("spec", 0) >= spec_limit:
+                continue
+            if _try_assign_worker(task_id, title, "spec"):
+                stage_counts["spec"] = stage_counts.get("spec", 0) + 1
+
+        elif stage == "queued":
             # queued → designing: check designing slot
             designing_limit = STAGE_CONCURRENCY.get("designing", 1)
             if stage_counts.get("designing", 0) >= designing_limit:

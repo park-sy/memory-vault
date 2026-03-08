@@ -2,9 +2,8 @@
 type: role-memory
 importance: 9
 created: 2026-02-25
-last_accessed: 2026-02-28
-access_count: 2
 tags: [planner, core, lessons]
+
 ---
 
 # Planner Memory

@@ -5,9 +5,8 @@ status: accepted
 date: "2026-02-28"
 participants: ["상엽", "얍"]
 importance: 9
-last_accessed: 2026-02-28
-access_count: 2
 tags: [architecture, organization, platform-team, team-topologies, ai-advantage]
+
 ---
 
 # ADR-002: Platform Team 구조 채택
@@ -116,6 +115,34 @@ AI 에이전트는:
 - 롤백 가능 → memory.md 수정 또는 git revert로 오염 즉시 복구
 - git blame → 패턴의 기원과 이유를 코드처럼 추적
 - 비용 정량화 → 토큰 = 돈. 조직 구조 효율을 숫자로 측정/최적화 가능
+
+## 도메인팀 유형
+
+도메인팀은 소프트웨어 프로젝트에 한정되지 않는다.
+
+| 유형 | 정의 | context.md 핵심 | 전문가 역할 | 예시 |
+|------|------|-----------------|-------------|------|
+| project | 소프트웨어 프로젝트 | 스택, 아키텍처, 기능 목록 | developer | whos-life |
+| experimentation | 반복 실험/최적화 | 프로필, 실험 결과, 검증 현황 | specialist | learning |
+| research | 지속적 조사/분석 | 조사 범위, 축적 지식 | analyst | (향후) |
+
+### 도메인팀 생성 판별 기준
+
+3개 중 2개 이상 충족 시 도메인팀 생성:
+
+1. **지속적 컨텍스트**: 세션 간 유지해야 할 도메인 지식이 있는가?
+2. **전문성 축적**: 반복 작업으로 전문 지식이 쌓이는가?
+3. **코어팀 부족**: 코어팀 역할만으로는 깊이가 부족한가?
+
+### 유형별 파일 구조 차이
+
+| 파일 | project 유형 | experimentation 유형 |
+|------|-------------|---------------------|
+| context.md | 스택, 아키텍처, 기능 목록 | 프로필, 가설, 검증 현황 |
+| 전문가 역할 | developer.md | specialist.md |
+| 누적 기억 | developer-memory.md | specialist-memory.md |
+| 추적 로그 | (backlog/tasks) | experiment-log.md |
+| 도메인 라이브러리 | — | methods/ 등 |
 
 ## Consequences
 

@@ -2,10 +2,9 @@
 type: convention
 importance: 7
 created: 2026-02-25
-last_accessed: 2026-02-27
-access_count: 1
 tags: [hooks, automation, permissions]
 source: manual
+
 ---
 
 # Hooks System

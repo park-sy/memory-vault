@@ -21,9 +21,9 @@ tags: [core, core-team, organization]
 
 | 역할 | 디렉토리 | 완료 키워드 | 전문 영역 |
 |------|----------|-------------|-----------|
-| Planner | [[01-org/core/planner/role]] | `SPEC_READY` | 요구사항 → spec 변환 |
+| Planner | [[01-org/core/planner/role]] | `SPEC_READY` / `DESIGN_READY` | 요구사항 → spec → SKILL.md |
 | Researcher | [[01-org/core/researcher/role]] | `RESEARCH_DONE` | 리서치, 분석, 비교 |
-| Reviewer | [[01-org/core/reviewer/role]] | `REVIEW_DONE` | 코드/설계 리뷰 |
+| Reviewer | [[01-org/core/reviewer/role]] | `REVIEW_DONE` | 코드/설계 리뷰, Pipeline review 단계 |
 | QA | [[01-org/core/qa/role]] | `QA_DONE` | 테스트, 검증, 품질 보증 |
 | Coder | [[01-org/core/coder/role]] | `CODE_DONE` | 구현, 코딩 패턴, 최적화 |
 | Web Searcher | [[01-org/core/web-searcher/role]] | `SEARCH_DONE` | 실시간 웹 검색, 콘텐츠 추출 |

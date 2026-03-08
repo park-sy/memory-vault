@@ -2,9 +2,8 @@
 type: knowledge
 importance: 8
 created: "2026-03-01"
-last_accessed: "2026-03-01"
-access_count: 1
 tags: [communication, telegram, msgbus, tmux, infrastructure]
+
 ---
 
 # Communication System — 통신 체계
@@ -96,9 +95,11 @@ Telegram 브릿지와 Claude 세션 사이의 SQLite 기반 비동기 메시지 
 | `scripts/notify.py` | 아웃바운드 알림 CLI |
 | `scripts/check_inbox.py` | 인바운드 메시지 확인 CLI |
 
-### 4채널 토픽 구조
+### 토픽 구조
 
-포럼 그룹의 4개 토픽으로 메시지를 분류:
+포럼 그룹의 토픽으로 메시지를 분류. 고정 4개 + 동적 토픽.
+
+**고정 토픽:**
 
 | 채널 | 용도 | 알림 |
 |------|------|------|
@@ -106,6 +107,17 @@ Telegram 브릿지와 Claude 세션 사이의 SQLite 기반 비동기 메시지 
 | `approval` | 승인 요청 (plan_ready 등) | ON |
 | `report` | 작업 완료, 빌드 결과, 요약 | 무음 |
 | `clone` | 의사결정 캡처, 패턴 학습 | 무음 |
+
+**동적 토픽 (도메인팀 등):**
+
+도메인팀별 전용 채널. `.env`에 `TELEGRAM_TOPIC_{NAME}={id}` 등록 후 bridge 재시작.
+
+| 채널 | 용도 | 생성 |
+|------|------|------|
+| `learning` | 학습 도메인팀 실험/보고 | `telegram_api.py create-topic "learning"` |
+| (향후 추가) | 도메인팀 생성 시 자동 | [[06-skills/domain-team-onboarding]] |
+
+`TopicConfig.extras`에 자동 수집되어 `send_text(topic="learning")`, `notify.py --channel learning` 등으로 사용.
 
 ### 아웃바운드 (알림 보내기)
 
@@ -125,7 +137,21 @@ python3 scripts/check_inbox.py cc-pool-1 --peek   # 읽기만 (상태 변경 없
 python3 scripts/check_inbox.py --ack 42            # 처리 완료
 ```
 
-### 브릿지 시작
+### 서비스 관리
+
+`scripts/daemon.sh`로 bridge/factory 데몬을 통합 관리한다.
+launchd healthcheck(60초 주기)가 죽은 서비스를 자동 재시작.
+
+```bash
+bash scripts/daemon.sh start all     # bridge + factory 시작
+bash scripts/daemon.sh status        # 전체 상태 확인
+bash scripts/daemon.sh restart bridge # bridge만 재시작
+bash scripts/daemon.sh install       # launchd healthcheck 등록 (리부팅 후 자동 복구)
+```
+
+로그: `storage/logs/bridge.log`, `storage/logs/healthcheck.log`
+
+### 브릿지 수동 시작 (daemon.sh 없이)
 
 ```bash
 tmux new-session -d -s cc-telegram-bridge \

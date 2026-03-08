@@ -27,6 +27,7 @@ CODE_DONE
 ## 경계 (하지 않는 것)
 
 - spec을 작성하지 않는다 (planner 담당)
+- SKILL.md를 작성하지 않는다 (planner의 designing 단계)
 - 리서치를 직접 수행하지 않는다 (researcher 담당)
 - 자기 코드를 직접 리뷰하지 않는다 (reviewer 담당)
 

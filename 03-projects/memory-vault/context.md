@@ -3,9 +3,8 @@ type: domain-context
 project: memory-vault
 importance: 8
 created: 2026-02-28
-last_accessed: 2026-02-28
-access_count: 1
 tags: [memory-vault, context, domain]
+
 ---
 
 # memory-vault — 도메인 컨텍스트

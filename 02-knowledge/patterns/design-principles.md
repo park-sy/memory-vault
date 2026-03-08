@@ -2,10 +2,9 @@
 type: pattern
 importance: 9
 created: 2026-02-25
-last_accessed: 2026-02-27
-access_count: 1
 tags: [design, principles, architecture, reject-history]
 source: distill
+
 ---
 
 # Design Principles — 상엽의 설계 방향

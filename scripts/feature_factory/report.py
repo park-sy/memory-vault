@@ -148,6 +148,25 @@ def generate_report(task_id: int, title: str) -> Optional[str]:
     for wa in worker_assignments:
         report_lines.append(f"- pool-{wa['worker_id']} ({wa['role']}) → {wa['stage']} @ {wa['at']}")
 
+    # Token Usage section
+    token_records = db.get_tokens_for_task(task_id)
+    if token_records:
+        report_lines.extend([
+            "",
+            "## Token Usage",
+            "| 단계 | 모델 | Input | Output | Cache Read | Cache Create | Duration |",
+            "|------|------|-------|--------|------------|-------------|----------|",
+        ])
+        total_all = 0
+        for tr in token_records:
+            dur = _format_duration(tr.duration_ms / 1000) if tr.duration_ms > 0 else "-"
+            report_lines.append(
+                f"| {tr.stage} | {tr.model} | {tr.input_tokens:,} | {tr.output_tokens:,} "
+                f"| {tr.cache_read_tokens:,} | {tr.cache_creation_tokens:,} | {dur} |"
+            )
+            total_all += tr.total_tokens
+        report_lines.append(f"\n**Total tokens: {total_all:,}**")
+
     report_lines.extend([
         "",
         f"---",

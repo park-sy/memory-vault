@@ -2,9 +2,8 @@
 type: role-memory
 importance: 8
 created: 2026-02-28
-last_accessed: 2026-03-01
-access_count: 2
 tags: [whos-life, developer, domain, lessons]
+
 ---
 
 # whos-life Developer Memory

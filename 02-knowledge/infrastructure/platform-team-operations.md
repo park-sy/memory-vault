@@ -2,9 +2,8 @@
 type: knowledge
 importance: 9
 created: "2026-03-01"
-last_accessed: "2026-03-01"
-access_count: 1
 tags: [core-team, operations, domain-team, enabling-team, infrastructure]
+
 ---
 
 # 팀 운영 가이드
@@ -64,9 +63,9 @@ tags: [core-team, operations, domain-team, enabling-team, infrastructure]
 
 | 역할 | 파일 | 완료 키워드 | 전문 영역 |
 |------|------|-------------|-----------|
-| Planner | `01-org/core/planner/role.md` | `SPEC_READY` | 요구사항 → spec 변환 |
+| Planner | `01-org/core/planner/role.md` | `SPEC_READY` / `DESIGN_READY` | 요구사항 → spec → SKILL.md |
 | Researcher | `01-org/core/researcher/role.md` | `RESEARCH_DONE` | 리서치, 분석, 비교 |
-| Reviewer | `01-org/core/reviewer/role.md` | `REVIEW_DONE` | 코드/설계 리뷰 |
+| Reviewer | `01-org/core/reviewer/role.md` | `REVIEW_DONE` | 코드/설계 리뷰, Pipeline review 단계 |
 | QA | `01-org/core/qa/role.md` | `QA_DONE` | 테스트, 검증, 품질 보증 |
 | Coder | `01-org/core/coder/role.md` | `CODE_DONE` | 구현, 코딩 패턴, 최적화 |
 | Web Searcher | `01-org/core/web-searcher/role.md` | `SEARCH_DONE` | 실시간 웹 검색 |
@@ -82,6 +81,7 @@ tags: [core-team, operations, domain-team, enabling-team, infrastructure]
 | "리뷰 해줘" | `core/reviewer/role.md` | Reviewer |
 | "QA 해줘" / "테스트 해줘" | `core/qa/role.md` | QA |
 | "코딩 해줘" | `core/coder/role.md` | Coder |
+| "학습 해줘" / "러닝 해줘" | `03-projects/learning/specialist.md` | Learning Specialist |
 | "오케스트레이션" | `01-org/enabling/orchestrator/role.md` | Orchestrator |
 
 역할 파일에 "읽어야 할 파일" 목록이 있으면 그것도 함께 로드한다.
@@ -105,27 +105,38 @@ tags: [core-team, operations, domain-team, enabling-team, infrastructure]
 
 ## 도메인팀
 
-프로젝트별 컨텍스트 + 도메인 전문 개발 담당.
+프로젝트/실험/리서치별 컨텍스트 + 도메인 전문가 담당.
+도메인팀은 소프트웨어 프로젝트에 한정되지 않는다 ([[04-decisions/002-platform-team-structure#도메인팀 유형|ADR-002 유형 참조]]).
+
+### 도메인팀 유형
+
+| 유형 | 정의 | 전문가 역할 | 예시 |
+|------|------|-------------|------|
+| project | 소프트웨어 프로젝트 | developer | whos-life, memory-vault |
+| experimentation | 반복 실험/최적화 | specialist | learning |
+| research | 지속적 조사/분석 | analyst | (향후) |
 
 ### 구성
 
-각 프로젝트 디렉토리에:
+각 도메인 디렉토리에:
 
-| 파일 | 역할 |
-|------|------|
-| `context.md` | 도메인 컨텍스트 (정본). 스택, 구조, 컨벤션, 기능 목록 |
-| `developer.md` | 도메인 developer 역할 정의 |
-| `developer-memory.md` | 도메인 종속 기억 |
+| 파일 | project 유형 | experimentation 유형 |
+|------|-------------|---------------------|
+| `context.md` | 스택, 구조, 기능 목록 | 프로필, 가설, 검증 현황 |
+| 전문가 역할 | `developer.md` | `specialist.md` |
+| 누적 기억 | `developer-memory.md` | `specialist-memory.md` |
+| 도메인 라이브러리 | — | `methods/` 등 |
 
 ### Context Injection 모델
 
-도메인팀 세션은 **3개 파일이 주입되어야** 작업 가능:
+도메인팀 세션은 **최소 2개 파일이 주입되어야** 작업 가능:
 
-1. `{project}/context.md` — 도메인 컨텍스트 (스택, 기존 기능 목록)
-2. `01-org/core/{role}/role.md` — 필요한 코어팀 역할
-3. `06-skills/feature-pipeline.md` — 케이스 2 진입 시
+1. `{project}/context.md` — 도메인 컨텍스트
+2. `{project}/{role}.md` — 전문가 역할 (developer.md 또는 specialist.md)
 
-developer.md가 이 3개를 "읽어야 할 파일"로 참조한다.
+추가 주입 (유형별):
+- project 유형: `01-org/core/{role}/role.md` (코어팀 역할), `06-skills/feature-pipeline.md` (케이스 2)
+- experimentation 유형: `methods/_index.md` (방법 라이브러리)
 
 ## 운영팀 (운영/최적화)
 
@@ -196,7 +207,9 @@ bash scripts/pool.sh reset 2 --role planner            # 역할 변경 재시작
 bash scripts/pool.sh teardown                          # 전체 종료
 ```
 
-사용 가능 역할: `planner`, `researcher`, `reviewer`, `qa`, `coder`, `orchestrator`, 또는 절대 경로
+사용 가능 역할: `planner`, `researcher`, `reviewer`, `qa`, `coder`, `web-searcher`, `orchestrator`, `learning-specialist`, 또는 절대 경로
+
+> 도메인팀 역할 추가: [[06-skills/domain-team-onboarding]] 체크리스트 참조
 
 ## 자동화 도구
 

@@ -83,6 +83,46 @@ def _test_capture_hook(s: Suite) -> None:
     note = q_ann.get("notes", "") if isinstance(q_ann, dict) else ""
     s.check_eq("annotation notes extraction", note, "PostgreSQL is safer")
 
+    # ── _has_question_ending tests ──
+
+    # 9. "?" ending
+    s.check("question_ending: ?", hook._has_question_ending("뭐가 더 맞을 거 같아?"))
+
+    # 10. Korean ending "거야"
+    s.check("question_ending: 거야", hook._has_question_ending("어떤식으로 하는거야"))
+
+    # 11. "?" after period: "설명해줘."  → False
+    s.check("question_ending: period only = False", not hook._has_question_ending("설명해줘."))
+
+    # 12. "?" mid-sentence with period ending → False for question_ending, True for marker
+    s.check("question_ending: mid-? = False", not hook._has_question_ending("뭐야? 설명해줘."))
+    s.check("exploration_marker catches mid-?", hook._has_exploration_marker("뭐야? 설명해줘."))
+
+    # ── _has_exploration_marker tests ──
+
+    # 13. "다시 말해" marker
+    s.check("exploration_marker: 다시 말해", hook._has_exploration_marker("다시 말해봐."))
+
+    # 14. "예를들어" marker
+    s.check("exploration_marker: 예를들어", hook._has_exploration_marker("예를들어 주식이라면"))
+
+    # 15. no marker → False
+    s.check("exploration_marker: no marker", not hook._has_exploration_marker("DB로 이관해줘"))
+
+    # ── _is_exploratory integration tests ──
+
+    opts = [{"label": "A"}, {"label": "B"}]
+
+    # 16. exact option match → False (clear selection)
+    s.check("is_exploratory: option match = False", not hook._is_exploratory("A", opts))
+
+    # 17. question with marker → True
+    s.check("is_exploratory: marker = True", hook._is_exploratory("아닐까? 너 생각엔", opts))
+
+    # 18. concrete instruction, no marker → False
+    s.check("is_exploratory: concrete = False",
+            not hook._is_exploratory("/feature-session으로 트리거 대고 아무것도 안적으면 둘다", opts))
+
 
 def run(verbose: bool = False) -> List[TestResult]:
     return run_suite("capture-decision-hook", _test_capture_hook)

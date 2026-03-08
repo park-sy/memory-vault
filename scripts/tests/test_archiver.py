@@ -2,6 +2,7 @@
 
 import importlib
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 from typing import List
@@ -9,6 +10,7 @@ from typing import List
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.harness import Suite, run_suite, TestResult, make_temp_vault
+import access_tracker
 
 
 def _load_module(vault_dir: Path):
@@ -20,11 +22,45 @@ def _load_module(vault_dir: Path):
     return mod, original
 
 
+def _setup_access_db(vault_dir: Path, records: list) -> Path:
+    """Create a test access_tracker DB with file_role_access records.
+
+    records: [(file_path, role, access_count, last_accessed), ...]
+    """
+    db_path = vault_dir / "storage" / "access_tracker.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS file_role_access (
+            file_path     TEXT NOT NULL,
+            role          TEXT NOT NULL,
+            access_count  INTEGER NOT NULL DEFAULT 0,
+            last_accessed TEXT NOT NULL,
+            PRIMARY KEY (file_path, role)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_role (
+            session_id  TEXT PRIMARY KEY,
+            active_role TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+    """)
+    for fp, role, ac, la in records:
+        conn.execute(
+            "INSERT INTO file_role_access (file_path, role, access_count, last_accessed) VALUES (?, ?, ?, ?)",
+            (fp, role, ac, la),
+        )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
 def _test_archiver(s: Suite) -> None:
     # ── _parse_frontmatter tests ──
 
     vault = make_temp_vault({
-        "test_normal.md": '---\nimportance: 7\naccess_count: 3\nlast_accessed: "2026-01-15"\ntags: [a, b]\n---\n# Doc',
+        "test_normal.md": '---\nimportance: 7\ntags: [a, b]\n---\n# Doc',
         "test_no_fm.md": "# Just content\nNo frontmatter here.",
         "test_incomplete.md": "---\nimportance: 5\n# Missing closing ---",
     })
@@ -73,36 +109,54 @@ def _test_archiver(s: Suite) -> None:
         mod.VAULT_DIR = original
         shutil.rmtree(vault, ignore_errors=True)
 
-    # ── scan_vault / find_archive_candidates / generate_report ──
+    # ── scan_vault / find_archive_candidates / generate_report (DB 기반) ──
 
     vault2 = make_temp_vault({
-        "02-knowledge/patterns/active.md": '---\nimportance: 8\naccess_count: 10\nlast_accessed: "2026-02-28"\ntags: [pattern]\n---\n# Active',
-        "02-knowledge/patterns/cold.md": '---\nimportance: 2\naccess_count: 1\nlast_accessed: "2025-01-01"\ntags: [old]\n---\n# Cold',
-        "02-knowledge/patterns/warm.md": '---\nimportance: 5\naccess_count: 3\nlast_accessed: "2026-02-01"\ntags: [warm]\n---\n# Warm',
+        "02-knowledge/patterns/active.md": '---\nimportance: 8\ntags: [pattern]\n---\n# Active',
+        "02-knowledge/patterns/cold.md": '---\nimportance: 2\ntags: [old]\n---\n# Cold',
+        "02-knowledge/patterns/warm.md": '---\nimportance: 5\ntags: [warm]\n---\n# Warm',
         "CLAUDE.md": "# Should be excluded",
         "03-projects/test/no-fm.md": "# No frontmatter",
     })
+
+    # role-aware DB records: (file_path, role, access_count, last_accessed)
+    # coder memory.md baseline = 100
+    db_path = _setup_access_db(vault2, [
+        # coder baseline: memory.md 100회
+        ("01-org/core/coder/memory.md", "coder", 100, "2026-03-03"),
+        # active.md: coder 50회 → rate 50% (hot)
+        ("02-knowledge/patterns/active.md", "coder", 50, "2026-02-28"),
+        # cold.md: coder 1회 → rate 1% (cold)
+        ("02-knowledge/patterns/cold.md", "coder", 1, "2025-01-01"),
+        # warm.md: coder 5회 → rate 5%
+        ("02-knowledge/patterns/warm.md", "coder", 5, "2026-02-01"),
+    ])
 
     try:
         mod2, original2 = _load_module(vault2)
         mod2.SCAN_DIRS = ["02-knowledge", "03-projects"]
 
         # 9. scan_vault: returns tracked files with frontmatter
-        files = mod2.scan_vault()
+        files = mod2.scan_vault(db_path=db_path)
         s.check_eq("scan_vault: found 3 files with frontmatter", len(files), 3)
 
         # 10. scan_vault: excludes no-frontmatter
         paths = [f.path for f in files]
         s.check("scan_vault: no-fm excluded", "03-projects/test/no-fm.md" not in paths)
 
-        # 11-12. find_archive_candidates
-        candidates = mod2.find_archive_candidates(files, max_importance=3, max_access=2, min_cold_days=60)
-        s.check_eq("find_candidates: cold file matches", len(candidates), 1)
+        # 11. MemoryFile has role-aware fields
+        active_file = next(f for f in files if "active" in f.path)
+        s.check_gt("scan_vault: active file max_reference_rate > 0", active_file.max_reference_rate, 0)
+        s.check("scan_vault: active file has role_counts", "coder" in active_file.role_counts)
 
-        no_candidates = mod2.find_archive_candidates(files, max_importance=1, max_access=0, min_cold_days=9999)
+        # 12-13. find_archive_candidates (rate 기반)
+        candidates = mod2.find_archive_candidates(files, max_importance=3, max_rate=0.05, min_cold_days=60)
+        s.check_eq("find_candidates: cold file with low rate matches", len(candidates), 1)
+
+        no_candidates = mod2.find_archive_candidates(files, max_importance=1, max_rate=0.0, min_cold_days=9999)
         s.check_eq("find_candidates: strict filter = 0", len(no_candidates), 0)
 
-        # 13-14. generate_report
+        # 14-15. generate_report
         report = mod2.generate_report(files)
         s.check("report: has hot/warm/cold counts", "hot" in report and "warm" in report and "cold" in report)
         s.check("report: has avg_access_count", "avg_access_count" in report)

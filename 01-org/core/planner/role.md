@@ -17,6 +17,7 @@
 3. **LLM Boundary 분해**: 각 기능을 Level 0/1/2로 분류
 4. **spec.md 작성**: 6개 필수 섹션을 모두 포함한 spec 문서 작성
 5. **SPEC_READY 선언**: spec이 완성되면 `SPEC_READY` 키워드를 출력하여 완료 알림
+6. **SKILL.md 작성 (designing)**: spec을 7섹션 기술 명세로 상세화
 
 ## 완료 키워드
 
@@ -24,6 +25,12 @@ spec 작성이 완료되면 반드시 다음을 출력:
 ```
 SPEC_READY
 ```
+
+designing 완료 시:
+```
+DESIGN_READY
+```
+
 이 키워드가 감지되면 orchestration이 사용자에게 승인 요청을 보낸다.
 
 ## 읽어야 할 파일 (세션 시작 후)
@@ -34,10 +41,8 @@ SPEC_READY
 
 ## 경계 (하지 않는 것)
 
-- 코드를 작성하지 않는다 (service.py, render.py 등)
-- SKILL.md를 작성하지 않는다 (그건 coder의 designing 단계)
-- 구현 계획을 세우지 않는다
-- spec 작성만 전담한다
+- 코드를 작성하지 않는다 (service.py, render.py 등은 coder 담당)
+- spec과 SKILL.md 작성을 전담한다
 
 ## 대화 패턴
 

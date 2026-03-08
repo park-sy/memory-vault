@@ -147,6 +147,51 @@ def _test_decision(s: Suite) -> None:
     s.check("categories: workflow valid", "workflow" in dc.CATEGORIES)
     s.check("categories: unknown invalid", "unknown" not in dc.CATEGORIES)
 
+    # ── _is_decision tests ──
+
+    # 17. exploratory tag → not a decision
+    d_exp = Decision("D-099", "uncategorized", "2026-03-07", "ctx", "A,B", "뭐야?",
+                     "뭐야?", tags="auto-captured, exploratory")
+    s.check("_is_decision: exploratory = False", not dc._is_decision(d_exp))
+
+    # 18. normal tag → is a decision
+    d_normal = Decision("D-100", "architecture", "2026-03-07", "ctx", "A,B", "A",
+                        "reason", tags="auto-captured")
+    s.check("_is_decision: normal = True", dc._is_decision(d_normal))
+
+    # ── tag command roundtrip ──
+
+    tmp_tag = Path(tempfile.mkdtemp(prefix="tag-test-"))
+    try:
+        tag_log = tmp_tag / "decision-log.md"
+        test_d = [
+            Decision("D-001", "architecture", "2026-03-07", "ctx", "A,B", "A",
+                     "reason", tags="auto-captured"),
+        ]
+        dc.write_decisions(tag_log, test_d, "2026-03-07")
+
+        # Monkeypatch
+        orig_log = dc.DECISION_LOG
+        dc.DECISION_LOG = tag_log
+
+        # 19. tag adds correctly
+        class FakeArgs:
+            id = "D-001"
+            tag = "exploratory"
+        dc.cmd_tag(FakeArgs())
+        parsed_tag = dc.parse_decisions(tag_log)
+        s.check_contains("tag: exploratory added", "exploratory", parsed_tag[0].tags)
+
+        # 20. tag deduplication
+        dc.cmd_tag(FakeArgs())  # add same tag again
+        parsed_tag2 = dc.parse_decisions(tag_log)
+        tag_count = parsed_tag2[0].tags.count("exploratory")
+        s.check_eq("tag: no duplicate", tag_count, 1)
+
+        dc.DECISION_LOG = orig_log
+    finally:
+        shutil.rmtree(tmp_tag, ignore_errors=True)
+
 
 def run(verbose: bool = False) -> List[TestResult]:
     return run_suite("decision-clone", _test_decision)

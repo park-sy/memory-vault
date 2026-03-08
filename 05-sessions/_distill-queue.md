@@ -1,8 +1,6 @@
 ---
 type: meta
 purpose: "세션 로그 증류 대기 목록"
-last_accessed: "2026-03-01"
-access_count: 1
 
 ---
 

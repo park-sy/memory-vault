@@ -2,8 +2,8 @@
 type: clone-data
 subtype: decision-log
 created: 2026-02-22
-last_updated: 2026-03-02
-total_entries: 17
+last_updated: 2026-03-08
+total_entries: 38
 tags: [decision-clone, decisions]
 ---
 
@@ -161,3 +161,192 @@ tags: [decision-clone, decisions]
 - **confidence**: medium
 - **outcome**: pending
 - **tags**: tooling
+
+### D-018 | uncategorized | 2026-03-03
+- **context**: 내가 이해한 방향이 맞아? 아니면 다른 의미야?
+- **options**: 맞아, 그 방향, 좀 다른 뜻이야
+- **chosen**: 좀 다른 의미이긴한데, 그냥 코드를 만들었을 때 사용자가 더 많은 정보를 획득할 수 있고 그 기능에 대한 세밀한 조절이 가능한 코드들이 만들어져야한다는거야. 다시 말해봐.
+- **rationale**: 좀 다른 의미이긴한데, 그냥 코드를 만들었을 때 사용자가 더 많은 정보를 획득할 수 있고 그 기능에 대한 세밀한 조절이 가능한 코드들이 만들어져야한다는거야. 다시 말해봐.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-019 | uncategorized | 2026-03-03
+- **context**: 기존 frontmatter에 있는 access_count/last_accessed 필드를 어떻게 처리할까요?
+- **options**: DB로 이관 + frontmatter에서 제거, DB로 이관 + frontmatter 유지 (Recommended), 기존 데이터 버리고 새로 시작
+- **chosen**: DB로 이관 + frontmatter에서 제거
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-020 | uncategorized | 2026-03-03
+- **context**: 파이프라인 각 단계에 팀을 매핑하려면, designing 단계의 담당을 먼저 결정해야 해. SKILL.md(7섹션 기술 명세) 작성은 누가 해야 해?
+- **options**: Planner, Coder, 새 역할 (Designer)
+- **chosen**: 뭐가 더 맞을 거 같아?
+- **rationale**: 뭐가 더 맞을 거 같아?
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-021 | uncategorized | 2026-03-03
+- **context**: coding 이후에 코드 검증 단계를 추가할까? 추가하면 파이프라인이 `coding → review → done`이 되고, 각 코어팀이 정확히 한 단계씩 담당하게 돼.
+- **options**: review 단계 추가 (Recommended), QA가 코드도 검증, 현행 유지
+- **chosen**: review 단계 추가 (Recommended)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-022 | uncategorized | 2026-03-03
+- **context**: 어떤 방식으로 갈까?
+- **options**: JSONL 스캔만 (Recommended), 이중 모드 (원래 계획), JSONL + 비용 후계산
+- **chosen**: JSONL 스캔만 (Recommended)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-023 | uncategorized | 2026-03-03
+- **context**: unique_sessions를 제거하고 핵심 지표를 어떻게 구성할까?
+- **options**: reference_count만 (Recommended), reference_count + access_log, 다른 지표 제안
+- **chosen**: 아니 팀별 hot/cold 판단으로 바꿔야하는건 아닐까? 뭐가 중요한거 같아? 너 생각엔
+- **rationale**: 아니 팀별 hot/cold 판단으로 바꿔야하는건 아닐까? 뭐가 중요한거 같아? 너 생각엔
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-024 | uncategorized | 2026-03-06
+- **context**: 시드 학습 방법 4개(spaced-repetition, active-recall, feynman-technique, interleaving)로 시작하는데, 추가로 넣고 싶은 방법이 있어?
+- **options**: 이 4개면 충분, 몇 개 더 추가
+- **chosen**: 이 네개가 뭐야? 설명해줘.
+- **rationale**: 이 네개가 뭐야? 설명해줘.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-025 | uncategorized | 2026-03-06
+- **context**: 이 4개로 시작할까, 추가할 방법이 있어?
+- **options**: 이 4개로 시작 (Recommended), 더 추가하고 싶어
+- **chosen**: 오호 예를들어 '주식'이라는 주제에 대해 학습한다면 저 네개는 어떤식으로 하는거야?
+- **rationale**: 오호 예를들어 '주식'이라는 주제에 대해 학습한다면 저 네개는 어떤식으로 하는거야?
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-026 | uncategorized | 2026-03-06
+- **context**: 학습 도메인팀 플랜 진행할까?
+- **options**: 진행 (Recommended), 시드 방법 추가, 수정 요청
+- **chosen**: 음 이런 개념적인거 말고, 예를 들어 주식 시장의 움직임이나, 현재 거시적인 정치적 경제적 상황을 잘읽게 만들어야 한다면?
+- **rationale**: 음 이런 개념적인거 말고, 예를 들어 주식 시장의 움직임이나, 현재 거시적인 정치적 경제적 상황을 잘읽게 만들어야 한다면?
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-027 | uncategorized | 2026-03-06
+- **context**: 시드 방법을 이렇게 확장해서 진행할까?
+- **options**: 3계층 8개로 시작 (Recommended), 판단력 중심으로, 다른 생각 있음
+- **chosen**: 오호 이런 방법론도 저장해봐. 그리고 지금의 내가 생각하는 효율적인 방법은 '비유'야. 그리고 또 그 비유는 그 사람의 경험에서 비유하는게 제일 효과적이라고 생각해. 그래서 기존에는 사람마다 무슨 경험을 가지고, 어떤 일을하고 하는것과 상관없이 일반적인 경우로 비유를 했잖아. 그런데 이제는 ai가 나의 경험을 알고 잇다면 그거에 맞춰서 비유를 해줘서 이해도가 올라가고, 그로부터 더 경험을 많이 가지고 있고 ai도 그 컨텍스트를 충분히 이해하고 있기 때문에 계속해서 선순환 구조를 가지고 간다고 생각해. 내 생각이 어때?
+- **rationale**: 오호 이런 방법론도 저장해봐. 그리고 지금의 내가 생각하는 효율적인 방법은 '비유'야. 그리고 또 그 비유는 그 사람의 경험에서 비유하는게 제일 효과적이라고 생각해. 그래서 기존에는 사람마다 무슨 경험을 가지고, 어떤 일을하고 하는것과 상관없이 일반적인 경우로 비유를 했잖아. 그런데 이제는 ai가 나의 경험을 알고 잇다면 그거에 맞춰서 비유를 해줘서 이해도가 올라가고, 그로부터 더 경험을 많이 가지고 있고 ai도 그 컨텍스트를 충분히 이해하고 있기 때문에 계속해서 선순환 구조를 가지고 간다고 생각해. 내 생각이 어때?
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured, exploratory
+
+### D-028 | uncategorized | 2026-03-06
+- **context**: 세션 컨텍스트 기반 feature 생성을 어떤 방식으로 하고 싶어? 예: 대화 중 논의한 내용을 자동 요약해서 title+description을 만들어주는 건지, 아니면 세션 로그 파일(05-sessions/)을 읽어서 추출하는 건지?
+- **options**: 대화 컨텍스트 자동 요약, 세션 로그 파일 분석, 둘 다
+- **chosen**: /feature-session으로 트리거 대고 아무것도 안적으면 1,2 둘다 해당 명령어 이후에 내가 내용 적으면 그거 위주로.
+- **rationale**: /feature-session으로 트리거 대고 아무것도 안적으면 1,2 둘다 해당 명령어 이후에 내가 내용 적으면 그거 위주로.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-029 | uncategorized | 2026-03-07
+- **context**: daemon.sh에 infra-dashboard도 등록해서 bridge/factory처럼 자동 관리할까?
+- **options**: 등록 (Recommended), 수동 실행만
+- **chosen**: 등록 (Recommended)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-030 | uncategorized | 2026-03-07
+- **context**: Phase 1 MVP 범위 — 어디까지 먼저 만들까?
+- **options**: Overview + Scheduler (Recommended), Overview + Memory + Org, 전부 한번에
+- **chosen**: 전부 한번에
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-031 | uncategorized | 2026-03-07
+- **context**: token-monitor와 token-dashboard는 rate limit 조회(같은 API), OAuth 토큰 읽기, 모델명 포맷팅, 리셋 시간 포맷팅이 중복이다. token-monitor가 이미 멀티 프로바이더 rate limit + 작업 큐를 가지고 있고, token-dashboard는 JSONL 스캔 → 일별 차트 + 프로젝트별 분석이 핵심. 어떻게 할까?
+- **options**: token-monitor에 통합 (Recommended), 중복 함수만 _shared.py로, token-dashboard에 통합
+- **chosen**: token-monitor에 통합 (Recommended)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-032 | uncategorized | 2026-03-08
+- **context**: 상사 페르소나 3명(진수/미영/정훈)의 성격과 관점이 원하는 방향과 맞아?
+- **options**: 이대로 좋아, 인원/성격 수정, 완전히 다시
+- **chosen**: 다른 레퍼런스를 좀 더 찾아봐.
+- **rationale**: 다른 레퍼런스를 좀 더 찾아봐.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-033 | uncategorized | 2026-03-08
+- **context**: 체크인 시간대와 빈도는 어떻게 할까? 설계안: 평일 아침 09:00 + 저녁 18:00 + 주간 금요일 17:00
+- **options**: 설계안 그대로, 아침만, 직접 설정할게
+- **chosen**: 이거 설정할 수 있는 화면도 만들어줘.
+- **rationale**: 이거 설정할 수 있는 화면도 만들어줘.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-034 | uncategorized | 2026-03-08
+- **context**: Telegram 전용 그룹은 토픽 없이 단순 그룹 채팅으로 시작하는 게 좋을까? (토픽으로 나누면 단톡방 느낌이 사라짐)
+- **options**: 단순 그룹 채팅 (추천), 토픽 분리, 포럼 그룹 재활용
+- **chosen**: 단순 그룹 채팅 (추천)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-035 | uncategorized | 2026-03-08
+- **context**: 상사의 LLM 호출에 어떤 모델을 쓸까?
+- **options**: Haiku 4.5 (추천), Sonnet 4.6, 상황별 혼합
+- **chosen**: Haiku 4.5 (추천)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-036 | uncategorized | 2026-03-08
+- **context**: 상사 페르소나 구성을 어떻게 할까?
+- **options**: 수정안 (추천), 원래 설계, 직접 구성할게
+- **chosen**: 수정안 (추천)
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-037 | uncategorized | 2026-03-08
+- **context**: 모바일에서 Claude app 링크로 뭘 하고 싶은 거야? 워커 세션에 직접 붙어서 수정 지시를 내리는 건 tmux (데스크탑)에서만 가능한데, 모바일에서의 워크플로우가 뭐야?
+- **options**: Telegram에서 텍스트로 피드백, Claude 앱에서 새 대화, 둘 다
+- **chosen**: 지금 remote-control 되잖아. 그걸로 tmux 세션에 모바일로 붙는거.
+- **rationale**: 지금 remote-control 되잖아. 그걸로 tmux 세션에 모바일로 붙는거.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-038 | uncategorized | 2026-03-08
+- **context**: 모바일에서 워커 세션에 접속하는 방법을 어떻게 제공할까요?
+- **options**: tmux-attach:// + SSH 커맨드, tmux 커맨드만, remote-control URL 자동 생성
+- **chosen**: 있을텐데, 몇가지 보내봐 테스트하게.
+- **rationale**: 있을텐데, 몇가지 보내봐 테스트하게.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured

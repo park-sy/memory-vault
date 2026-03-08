@@ -5,9 +5,8 @@ status: accepted
 date: "2026-02-27"
 participants: ["상엽", "얍"]
 importance: 9
-last_accessed: 2026-02-27
-access_count: 1
 tags: [architecture, vault, obsidian, memory-system]
+
 ---
 
 # ADR-001: Memory Vault 구조 채택

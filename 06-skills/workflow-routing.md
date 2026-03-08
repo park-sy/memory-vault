@@ -2,9 +2,8 @@
 type: skill
 importance: 9
 created: 2026-02-28
-last_accessed: 2026-02-28
-access_count: 1
 tags: [workflow, routing, orchestration, platform-team]
+
 ---
 
 # Workflow Routing — 작업 흐름 라우팅

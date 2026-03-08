@@ -28,7 +28,7 @@ sys.path.insert(0, str(TESTS_DIR))
 # Suite registry: name -> module name
 SUITES = [
     ("msgbus", "test_msgbus"),
-    ("frontmatter", "test_frontmatter"),
+    ("access-tracker", "test_access_tracker"),
     ("archiver", "test_archiver"),
     ("brief", "test_brief"),
     ("inbox-deliver", "test_inbox_deliver"),

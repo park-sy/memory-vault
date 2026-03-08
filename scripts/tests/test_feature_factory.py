@@ -318,6 +318,9 @@ def test_report_generate(s: Suite) -> None:
         orig_get_events = db.get_events_for_task
         db.get_events_for_task = lambda tid, dp=test_db_path: orig_get_events(tid, dp)
 
+        orig_get_tokens = db.get_tokens_for_task
+        db.get_tokens_for_task = lambda tid, dp=test_db_path: orig_get_tokens(tid, dp)
+
         orig_get_report_path = report._get_report_path
         report._get_report_path = lambda name: str(Path(report_dir) / f"{name}.md")
 
@@ -325,6 +328,7 @@ def test_report_generate(s: Suite) -> None:
 
         # Restore
         db.get_events_for_task = orig_get_events
+        db.get_tokens_for_task = orig_get_tokens
         report._get_report_path = orig_get_report_path
 
         s.check_not_none("report generated", result)
@@ -339,8 +343,10 @@ def test_report_generate(s: Suite) -> None:
 
         # No events → returns None
         db.get_events_for_task = lambda tid, dp=test_db_path: orig_get_events(tid, dp)
+        db.get_tokens_for_task = lambda tid, dp=test_db_path: orig_get_tokens(tid, dp)
         none_result = report.generate_report(999, "No Events")
         db.get_events_for_task = orig_get_events
+        db.get_tokens_for_task = orig_get_tokens
         s.check_none("no events returns None", none_result)
 
     finally:
@@ -744,6 +750,553 @@ def test_dashboard_render_recent_events(s: Suite) -> None:
         os.unlink(test_db_path)
 
 
+# ── session_scanner tests ───────────────────────────────────────────────────
+
+def test_scanner_parse_assistant_usage(s: Suite) -> None:
+    """Test _parse_assistant_usage with real JSONL structure."""
+    from feature_factory.session_scanner import _parse_assistant_usage
+
+    # Valid assistant line
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-4-6",
+            "usage": {
+                "input_tokens": 3,
+                "cache_creation_input_tokens": 12932,
+                "cache_read_input_tokens": 19758,
+                "output_tokens": 9,
+                "service_tier": "standard",
+            },
+        },
+        "sessionId": "abc-123",
+    })
+    result = _parse_assistant_usage(line)
+    s.check_not_none("valid line parsed", result)
+    s.check_eq("model", "claude-opus-4-6", result["model"])
+    s.check_eq("input_tokens", 3, result["input_tokens"])
+    s.check_eq("output_tokens", 9, result["output_tokens"])
+    s.check_eq("cache_read", 19758, result["cache_read_tokens"])
+    s.check_eq("cache_creation", 12932, result["cache_creation_tokens"])
+    s.check_eq("session_id", "abc-123", result["session_id"])
+
+    # Non-assistant type
+    line2 = json.dumps({"type": "human", "message": {"content": "hi"}})
+    s.check_none("human type returns None", _parse_assistant_usage(line2))
+
+    # No usage field
+    line3 = json.dumps({"type": "assistant", "message": {"model": "x"}})
+    s.check_none("no usage returns None", _parse_assistant_usage(line3))
+
+    # Invalid JSON
+    s.check_none("invalid json returns None", _parse_assistant_usage("not json"))
+
+    # Empty line
+    s.check_none("empty line returns None", _parse_assistant_usage(""))
+
+
+def test_scanner_encode_project_path(s: Suite) -> None:
+    from feature_factory.session_scanner import _encode_project_path
+
+    s.check_eq(
+        "encode path",
+        "-Users-hiyeop-dev-whos-life",
+        _encode_project_path("/Users/hiyeop/dev/whos-life"),
+    )
+    s.check_eq(
+        "encode memory-vault",
+        "-Users-hiyeop-dev-memory-vault",
+        _encode_project_path("/Users/hiyeop/dev/memory-vault"),
+    )
+
+
+def test_scanner_scan_session_tokens(s: Suite) -> None:
+    """Test scan_session_tokens with temp JSONL files."""
+    from feature_factory.session_scanner import scan_session_tokens, _CLAUDE_PROJECTS_DIR
+    import feature_factory.session_scanner as scanner_mod
+
+    # Create temp dir simulating ~/.claude/projects/-encoded/
+    with tempfile.TemporaryDirectory() as tmpdir:
+        encoded = "-test-project"
+        project_dir = tmpdir
+        scan_dir = Path(project_dir) / encoded
+
+        # Monkey-patch _CLAUDE_PROJECTS_DIR
+        orig_dir = scanner_mod._CLAUDE_PROJECTS_DIR
+        scanner_mod._CLAUDE_PROJECTS_DIR = Path(project_dir)
+
+        scan_dir.mkdir(parents=True)
+
+        # Write a JSONL file
+        jsonl_path = scan_dir / "test-session.jsonl"
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "cache_read_input_tokens": 200,
+                        "cache_creation_input_tokens": 300,
+                    },
+                },
+                "sessionId": "sess-1",
+            }),
+            json.dumps({"type": "human", "message": {"content": "hi"}}),
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "usage": {
+                        "input_tokens": 400,
+                        "output_tokens": 150,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+                "sessionId": "sess-1",
+            }),
+        ]
+        jsonl_path.write_text("\n".join(lines), encoding="utf-8")
+
+        # Scan with after_time = 0 (catch all)
+        result = scan_session_tokens("/test/project", 0.0)
+        s.check_not_none("scan result not None", result)
+        s.check_eq("model", "claude-opus-4-6", result.model)
+        s.check_eq("input_tokens", 500, result.input_tokens)
+        s.check_eq("output_tokens", 200, result.output_tokens)
+        s.check_eq("cache_read", 200, result.cache_read_tokens)
+        s.check_eq("cache_creation", 300, result.cache_creation_tokens)
+        s.check_eq("request_count", 2, result.request_count)
+        s.check_eq("total", 1200, result.total_tokens)
+        s.check_eq("session_id", "sess-1", result.session_id)
+
+        # Scan with after_time in the future → None
+        import time as time_mod
+        future_result = scan_session_tokens("/test/project", time_mod.time() + 9999)
+        s.check_none("future time returns None", future_result)
+
+        # Scan nonexistent project → None
+        none_result = scan_session_tokens("/nonexistent/path", 0.0)
+        s.check_none("nonexistent path returns None", none_result)
+
+        scanner_mod._CLAUDE_PROJECTS_DIR = orig_dir
+
+
+def test_db_stage_token_log(s: Suite) -> None:
+    """Test stage_token_log CRUD operations."""
+    from feature_factory import db
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        test_db_path = f.name
+
+    try:
+        db.init_db(test_db_path)
+
+        # Record tokens
+        rec_id = db.record_stage_tokens(
+            task_id=10, stage="spec", model="claude-opus-4-6",
+            input_tokens=1000, output_tokens=500,
+            cache_read_tokens=2000, cache_creation_tokens=300,
+            cost_usd="0.05", duration_ms=120000,
+            session_id="sess-abc", db_path=test_db_path,
+        )
+        s.check_gt("record id > 0", rec_id, 0)
+
+        # Record another for same task different stage
+        db.record_stage_tokens(
+            task_id=10, stage="designing", model="claude-sonnet-4-6",
+            input_tokens=500, output_tokens=200,
+            cache_read_tokens=100, cache_creation_tokens=50,
+            duration_ms=60000,
+            db_path=test_db_path,
+        )
+
+        # Get tokens for task
+        records = db.get_tokens_for_task(10, test_db_path)
+        s.check_eq("2 records for task 10", 2, len(records))
+        s.check_eq("first stage spec", "spec", records[0].stage)
+        s.check_eq("first model", "claude-opus-4-6", records[0].model)
+        s.check_eq("first total", 3800, records[0].total_tokens)
+        s.check_eq("second stage designing", "designing", records[1].stage)
+
+        # Get summary
+        summary = db.get_token_summary(test_db_path)
+        s.check_eq("summary input", 1500, summary["input_tokens"])
+        s.check_eq("summary output", 700, summary["output_tokens"])
+        s.check_eq("summary count", 2, summary["record_count"])
+        s.check_eq("summary total", 4650, summary["total_tokens"])
+
+        # Get summary by stage
+        by_stage = db.get_token_summary_by_stage(test_db_path)
+        s.check_eq("2 stages", 2, len(by_stage))
+        # Ordered by total_tokens DESC
+        s.check_eq("first stage by tokens", "spec", by_stage[0]["stage"])
+        s.check_eq("spec total", 3800, by_stage[0]["total_tokens"])
+        s.check_eq("spec run_count", 1, by_stage[0]["run_count"])
+
+        # Empty task → empty list
+        empty = db.get_tokens_for_task(999, test_db_path)
+        s.check_eq("empty task tokens", 0, len(empty))
+
+    finally:
+        os.unlink(test_db_path)
+
+
+# ── worker_complete_hook tests ───────────────────────────────────────────────
+
+def test_hook_get_active_assignment(s: Suite) -> None:
+    """Test _get_active_assignment DB query from worker_complete_hook."""
+    from feature_factory import db
+
+    # Add parent scripts dir to path for hook import
+    scripts_dir = str(Path(__file__).parent.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import worker_complete_hook as hook
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        test_db_path = f.name
+
+    try:
+        db.init_db(test_db_path)
+        db.create_assignment(3, 42, "planner", "spec", test_db_path)
+
+        # Monkey-patch FACTORY_DB
+        orig_db = hook.FACTORY_DB
+        hook.FACTORY_DB = Path(test_db_path)
+
+        # Should find active assignment
+        result = hook._get_active_assignment(3)
+        s.check_not_none("hook finds assignment", result)
+        s.check_eq("hook task_id", 42, result[0])
+        s.check_eq("hook stage", "spec", result[1])
+
+        # No assignment for worker 99
+        result = hook._get_active_assignment(99)
+        s.check_none("hook no assignment for unknown worker", result)
+
+        # Complete assignment → should not find
+        with db.connect(test_db_path) as conn:
+            conn.execute(
+                "UPDATE worker_assignments SET status = 'completed' WHERE worker_id = 3"
+            )
+        result = hook._get_active_assignment(3)
+        s.check_none("hook no assignment after complete", result)
+
+        hook.FACTORY_DB = orig_db
+    finally:
+        os.unlink(test_db_path)
+
+
+def test_hook_skip_patterns(s: Suite) -> None:
+    """Test that skip patterns are correctly defined."""
+    scripts_dir = str(Path(__file__).parent.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import worker_complete_hook as hook
+
+    s.check("has Enter to select", "Enter to select" in hook.SKIP_PATTERNS)
+    s.check("has Plan mode", "Plan mode" in hook.SKIP_PATTERNS)
+    s.check("has Waiting for", "Waiting for" in hook.SKIP_PATTERNS)
+    s.check("5 patterns total", len(hook.SKIP_PATTERNS) == 5)
+
+
+def test_hook_nonexistent_db(s: Suite) -> None:
+    """Test _get_active_assignment with nonexistent DB file."""
+    scripts_dir = str(Path(__file__).parent.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import worker_complete_hook as hook
+
+    orig_db = hook.FACTORY_DB
+    hook.FACTORY_DB = Path("/tmp/nonexistent-hook-test.db")
+
+    result = hook._get_active_assignment(1)
+    s.check_none("nonexistent db returns None", result)
+
+    hook.FACTORY_DB = orig_db
+
+
+# ── completion_detector tests ────────────────────────────────────────────────
+
+def test_detector_is_idle(s: Suite) -> None:
+    """Test _is_idle pattern detection."""
+    from feature_factory.completion_detector import _is_idle
+
+    # Idle: prompt in tail
+    s.check("idle with prompt", _is_idle("some output\n❯ \n"))
+    s.check("idle prompt only", _is_idle("❯"))
+    s.check("idle with leading text", _is_idle("Done.\n\n❯"))
+
+    # Real Claude Code UI: ❯ is 3rd from bottom
+    s.check("idle real ui", _is_idle(
+        "output\n───\n❯\xa0\n───\n  ⏵⏵ bypass permissions"
+    ))
+
+    # Not idle: no prompt
+    s.check("not idle empty", not _is_idle(""))
+    s.check("not idle no prompt", not _is_idle("Running tests...\nPASS"))
+    s.check("not idle whitespace", not _is_idle("   \n  \n  "))
+
+    # Prompt far above tail → not idle
+    s.check("prompt far above not idle", not _is_idle(
+        "❯\n" + "\n".join(["working..."] * 10)
+    ))
+
+
+def test_detector_parse_timestamp(s: Suite) -> None:
+    """Test _parse_timestamp for detector."""
+    from feature_factory.completion_detector import _parse_timestamp
+
+    dt = _parse_timestamp("2026-03-08 14:30:00")
+    s.check_eq("year", 2026, dt.year)
+    s.check_eq("hour", 14, dt.hour)
+    s.check_not_none("tzinfo", dt.tzinfo)
+
+    dt2 = _parse_timestamp("2026-03-08T14:30:00")
+    s.check_eq("iso year", 2026, dt2.year)
+
+    dt3 = _parse_timestamp("invalid")
+    s.check_not_none("invalid returns datetime", dt3)
+
+
+def test_detector_skip_patterns(s: Suite) -> None:
+    """Test detector skip patterns match hook patterns."""
+    from feature_factory.completion_detector import _SKIP_PATTERNS
+
+    s.check("has Enter to select", "Enter to select" in _SKIP_PATTERNS)
+    s.check("has Plan mode", "Plan mode" in _SKIP_PATTERNS)
+    s.check("5 patterns", len(_SKIP_PATTERNS) == 5)
+
+
+def test_detector_set_cleanup(s: Suite) -> None:
+    """Test that _detected set is cleaned up for completed assignments."""
+    from feature_factory import completion_detector as cd
+    from feature_factory import db
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        test_db_path = f.name
+
+    try:
+        db.init_db(test_db_path)
+
+        # Add stale IDs to _detected
+        cd._detected.clear()
+        cd._detected.add(999)
+        cd._detected.add(998)
+
+        # Monkey-patch db.connect to use test DB
+        orig_connect = db.connect
+        from contextlib import contextmanager
+        @contextmanager
+        def test_connect(dp=None):
+            with orig_connect(test_db_path) as conn:
+                yield conn
+        db.connect = test_connect
+
+        # No active assignments → stale IDs should be cleaned
+        cd.check_completions()
+        s.check_eq("stale ids cleaned", 0, len(cd._detected))
+
+        db.connect = orig_connect
+    finally:
+        cd._detected.clear()
+        os.unlink(test_db_path)
+
+
+# ── idempotency guard test ───────────────────────────────────────────────────
+
+def test_idempotency_guard(s: Suite) -> None:
+    """Test that _handle_stage_complete is a no-op when no active assignment."""
+    from feature_factory import db
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        test_db_path = f.name
+
+    try:
+        db.init_db(test_db_path)
+
+        # No assignment for task 999 — should not crash, should not log events
+        orig_get = db.get_active_assignment_for_task
+        db.get_active_assignment_for_task = lambda tid, dp=test_db_path: orig_get(tid, dp)
+
+        from feature_factory import dispatcher
+        # Should not raise
+        dispatcher._handle_stage_complete(999, "spec", "test-sender")
+
+        # No events should be logged for task 999
+        events = db.get_events_for_task(999, test_db_path)
+        s.check_eq("no events for guarded call", 0, len(events))
+
+        db.get_active_assignment_for_task = orig_get
+    finally:
+        os.unlink(test_db_path)
+
+
+# ── Revise + Action Links tests ──────────────────────────────────────────────
+
+def test_revise_callback(s: Suite) -> None:
+    """Test revise callback handling in approval_handler."""
+    from feature_factory import db, approval_handler
+
+    test_db_path = tempfile.mktemp(suffix=".db")
+    try:
+        db.init_db(test_db_path)
+
+        # Create assignment + approval
+        db.create_assignment(1, 42, "planner", "spec", test_db_path)
+        approval_id = db.create_approval(42, "spec_to_queued", 100, test_db_path)
+
+        # Verify initial state
+        approval = db.find_approval_by_msgbus_id(100, test_db_path)
+        s.check_eq("approval status pending", "pending", approval.status)
+
+        # Process revise — patch db functions to use test_db
+        orig_find = db.find_approval_by_msgbus_id
+        orig_resolve = db.resolve_approval
+        orig_log = db.log_event
+        orig_get_assign = db.get_active_assignment_for_task
+
+        db.find_approval_by_msgbus_id = lambda mid, dp=test_db_path: orig_find(mid, dp)
+        db.resolve_approval = lambda aid, res, dp=test_db_path: orig_resolve(aid, res, dp)
+        db.log_event = lambda tid, et, detail=None, dp=test_db_path: orig_log(tid, et, detail, dp)
+        db.get_active_assignment_for_task = lambda tid, dp=test_db_path: orig_get_assign(tid, dp)
+
+        # Mock notifier to avoid real Telegram calls
+        from feature_factory import notifier
+        orig_notify = notifier.notify_revision_request
+        notify_calls = []
+        notifier.notify_revision_request = lambda *a, **kw: notify_calls.append(a) or 1
+
+        result = approval_handler.handle_callback(100, "revise")
+        s.check_eq("revise returns True", True, result)
+
+        # Check approval resolved as revise_requested
+        with db.connect(test_db_path) as conn:
+            row = conn.execute("SELECT status, resolution FROM pending_approvals WHERE id = ?", (approval_id,)).fetchone()
+            s.check_eq("status revise_requested", "revise_requested", row["status"])
+            s.check_eq("resolution revise_requested", "revise_requested", row["resolution"])
+
+        # Check notify was called with worker_id
+        s.check_eq("notify called once", 1, len(notify_calls))
+        s.check_eq("notify task_id", 42, notify_calls[0][0])
+        s.check_eq("notify worker_id", 1, notify_calls[0][3])
+
+        # Check event logged
+        events = db.get_events_for_task(42, test_db_path)
+        revise_events = [e for e in events if e.event_type == "approval_res"]
+        s.check_eq("revise event logged", 1, len(revise_events))
+
+        # Restore
+        db.find_approval_by_msgbus_id = orig_find
+        db.resolve_approval = orig_resolve
+        db.log_event = orig_log
+        db.get_active_assignment_for_task = orig_get_assign
+        notifier.notify_revision_request = orig_notify
+    finally:
+        os.unlink(test_db_path)
+
+
+def test_worker_action_links(s: Suite) -> None:
+    """Test _worker_action_links helper."""
+    from feature_factory.notifier import _worker_action_links, _CLAUDE_CODE_LINK
+
+    links = _worker_action_links(1)
+    s.check_eq("contains tmux cmd", True, "tmux attach -t cc-pool-1" in links)
+    s.check_eq("contains claude link", True, _CLAUDE_CODE_LINK in links)
+
+    links2 = _worker_action_links(3)
+    s.check_eq("worker 3 tmux", True, "cc-pool-3" in links2)
+
+
+def test_approval_actions_include_revise(s: Suite) -> None:
+    """Test that notify_approval_request includes revise action."""
+    from feature_factory import notifier
+    import subprocess
+
+    # Capture the command that would be run
+    cmds = []
+    orig_run = subprocess.run
+    def mock_run(cmd, **kw):
+        cmds.append(cmd)
+        import types
+        r = types.SimpleNamespace(returncode=0, stdout='{"msg_id": 1}', stderr='')
+        return r
+    subprocess.run = mock_run
+
+    notifier.notify_approval_request(1, "test", "spec_to_queued")
+    subprocess.run = orig_run
+
+    s.check_eq("command captured", True, len(cmds) > 0)
+    # Find the --actions argument
+    cmd = cmds[-1]
+    actions_idx = None
+    for i, arg in enumerate(cmd):
+        if arg == "--actions":
+            actions_idx = i
+            break
+    s.check_eq("has --actions", True, actions_idx is not None)
+    if actions_idx is not None:
+        actions = cmd[actions_idx + 1: actions_idx + 4]
+        s.check_eq("3 actions", 3, len(actions))
+        s.check_eq("approve", "approve", actions[0])
+        s.check_eq("revise", "revise", actions[1])
+        s.check_eq("reject", "reject", actions[2])
+
+
+def test_db_migration_revise_status(s: Suite) -> None:
+    """Test that DB migration adds revise_requested to CHECK constraint."""
+    from feature_factory import db
+
+    test_db_path = tempfile.mktemp(suffix=".db")
+    try:
+        # Create old schema without revise_requested
+        conn = sqlite3.connect(test_db_path)
+        conn.executescript("""
+            CREATE TABLE pending_approvals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                gate_type TEXT NOT NULL,
+                msgbus_msg_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(status IN ('pending','approved','rejected','timed_out')),
+                created_at TEXT NOT NULL,
+                resolved_at TEXT,
+                resolution TEXT
+            );
+            INSERT INTO pending_approvals (task_id, gate_type, msgbus_msg_id, status, created_at)
+            VALUES (1, 'spec_to_queued', 100, 'pending', '2026-01-01 00:00:00');
+        """)
+        conn.close()
+
+        # Run migration
+        with db.connect(test_db_path) as conn2:
+            db._migrate_approval_status(conn2)
+
+        # Verify: old data preserved
+        with db.connect(test_db_path) as conn3:
+            row = conn3.execute("SELECT * FROM pending_approvals WHERE id = 1").fetchone()
+            s.check_eq("old data preserved", "pending", row["status"])
+
+            # Can insert revise_requested
+            conn3.execute(
+                "INSERT INTO pending_approvals (task_id, gate_type, msgbus_msg_id, status, created_at) "
+                "VALUES (2, 'spec_to_queued', 200, 'revise_requested', '2026-01-01 00:00:00')"
+            )
+            row2 = conn3.execute("SELECT status FROM pending_approvals WHERE task_id = 2").fetchone()
+            s.check_eq("revise_requested accepted", "revise_requested", row2["status"])
+
+        # Verify: migration is idempotent
+        with db.connect(test_db_path) as conn4:
+            db._migrate_approval_status(conn4)
+            count = conn4.execute("SELECT count(*) FROM pending_approvals").fetchone()[0]
+            s.check_eq("idempotent — row count", 2, count)
+    finally:
+        os.unlink(test_db_path)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -773,6 +1326,25 @@ def main():
         ("dashboard_compact", test_dashboard_render_compact),
         ("dashboard_pipeline", test_dashboard_render_pipeline),
         ("dashboard_events", test_dashboard_render_recent_events),
+        # Token tracking
+        ("scanner_parse", test_scanner_parse_assistant_usage),
+        ("scanner_encode", test_scanner_encode_project_path),
+        ("scanner_scan", test_scanner_scan_session_tokens),
+        ("db_token_log", test_db_stage_token_log),
+        # Worker completion detection
+        ("hook_assignment", test_hook_get_active_assignment),
+        ("hook_skip_patterns", test_hook_skip_patterns),
+        ("hook_nonexistent_db", test_hook_nonexistent_db),
+        ("detector_is_idle", test_detector_is_idle),
+        ("detector_timestamp", test_detector_parse_timestamp),
+        ("detector_skip_patterns", test_detector_skip_patterns),
+        ("detector_set_cleanup", test_detector_set_cleanup),
+        ("idempotency_guard", test_idempotency_guard),
+        # Revise + action links
+        ("revise_callback", test_revise_callback),
+        ("worker_action_links", test_worker_action_links),
+        ("approval_actions_revise", test_approval_actions_include_revise),
+        ("db_migration_revise", test_db_migration_revise_status),
     ]
 
     for name, fn in suites:

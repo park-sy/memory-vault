@@ -3,9 +3,8 @@ type: domain-context
 project: whos-life
 importance: 8
 created: 2026-02-28
-last_accessed: 2026-03-01
-access_count: 4
 tags: [whos-life, context, domain]
+
 ---
 
 # whos-life — 도메인 컨텍스트

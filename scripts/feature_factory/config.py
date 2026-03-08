@@ -55,7 +55,7 @@ APPROVAL_GATES = {
 STAGE_ROLES = {
     "idea":      "coder",      # domain analysis
     "spec":      "planner",    # spec authoring
-    "designing": "coder",      # SKILL.md creation
+    "designing": "planner",    # SKILL.md creation
     "testing":   "qa",         # command-level verification
     "coding":    "coder",      # implementation
 }

@@ -2,9 +2,8 @@
 type: knowledge
 importance: 9
 created: "2026-03-01"
-last_accessed: "2026-03-01"
-access_count: 2
 tags: [memory, obsidian, vault, hooks, infrastructure, frontmatter]
+
 ---
 
 # Memory System — 옵시디언 기반 장기기억 체계
@@ -38,12 +37,14 @@ memory-vault/
 │   ├── conventions/  코딩 컨벤션, 에이전트 규칙
 │   ├── infrastructure/  시스템 인프라 문서 (이 파일 포함)
 │   └── mistakes/     실수 DB
-├── 03-projects/      프로젝트별 컨텍스트
+├── 03-projects/      도메인별 컨텍스트 (프로젝트, 실험, 리서치)
 │   └── {name}/
-│       ├── context.md          도메인 컨텍스트 (정본)
-│       ├── developer.md        도메인 developer 역할
-│       ├── developer-memory.md 도메인 종속 기억
-│       └── ideas-backlog.md    아이디어 백로그
+│       ├── context.md              도메인 컨텍스트 (정본)
+│       ├── developer.md            도메인 developer 역할 (project 유형)
+│       ├── specialist.md           도메인 specialist 역할 (experimentation 유형)
+│       ├── developer-memory.md     도메인 종속 기억 (project)
+│       ├── specialist-memory.md    도메인 종속 기억 (experimentation)
+│       └── ideas-backlog.md        아이디어 백로그
 ├── 04-decisions/     ADR (아키텍처 결정 기록)
 ├── 05-sessions/      세션 로그 (날짜별 요약)
 ├── 06-skills/        재사용 방법론 ("어떻게 하는가")
@@ -58,7 +59,7 @@ memory-vault/
 | `00-MOC/` | 다른 노트를 묶는 목차/맵 | 실제 콘텐츠 |
 | `01-org/` | 원칙, 정체성, 역할 정의, memory | 프로젝트 작업물 |
 | `02-knowledge/` | 3회+ 검증된 범용 패턴 | 프로젝트 종속 지식 |
-| `03-projects/` | 프로젝트 컨텍스트, 구현 계획 | 범용 패턴 |
+| `03-projects/` | 도메인 컨텍스트 (소프트웨어 프로젝트, 실험/최적화, 리서치 등) | 범용 패턴 |
 | `04-decisions/` | "왜 이렇게 결정했는가" | 구현 방법 |
 | `05-sessions/` | 날짜별 세션 요약 | 영구 보존 지식 |
 | `06-skills/` | "어떻게 하는가" 절차 문서 | 일회성 작업 목록 |
@@ -73,8 +74,6 @@ memory-vault/
 type: knowledge        # knowledge | decision | skill | project | session | team | moc
 importance: 7          # 1-10 (아래 기준표 참조)
 created: "2026-02-28"
-last_accessed: "2026-03-01"  # 세션에서 읽을 때마다 갱신
-access_count: 3              # 세션에서 읽을 때마다 +1
 tags: [memory, pattern, ...]
 ---
 ```
@@ -89,13 +88,54 @@ tags: [memory, pattern, ...]
 | 3-4 | 일회성 해결, 상황 의존적 | "라이브러리 버그 우회" |
 | 1-2 | 사소한 임시 메모 | "회의 시간 변경" |
 
-### 접근 추적
+### 접근 추적 (역할 인식)
 
-세션에서 파일을 읽으면:
-1. `last_accessed` → 오늘 날짜로 갱신
-2. `access_count` += 1
+파일 접근 기록은 `storage/access_tracker.db` SQLite DB에서 **역할별로** 관리된다.
+PostToolUse hook (`access_tracker.py`)이 Read 도구 사용 시 자동으로 기록한다.
 
-이 메타데이터는 기억 수명주기 관리에 사용된다.
+```sql
+-- file_role_access 테이블 — 파일별 역할별 접근 카운트
+file_path     TEXT NOT NULL     -- vault root 기준 상대경로
+role          TEXT NOT NULL     -- "coder", "planner", "unknown" 등
+access_count  INTEGER NOT NULL  -- 해당 역할의 누적 접근 횟수
+last_accessed TEXT NOT NULL     -- ISO date (YYYY-MM-DD)
+PRIMARY KEY (file_path, role)
+
+-- session_role 테이블 — 세션별 현재 활성 역할
+session_id    TEXT PRIMARY KEY  -- os.getppid() 기반
+active_role   TEXT NOT NULL     -- 현재 역할
+updated_at    TEXT NOT NULL     -- 마지막 역할 전환 시각
+```
+
+#### 역할 감지 원리
+
+`memory.md` 읽기가 역할 활성화 시그널:
+- `01-org/core/coder/memory.md` Read → 세션 역할 = "coder"
+- `01-org/enabling/orchestrator/memory.md` Read → 세션 역할 = "orchestrator"
+- 이후 읽는 모든 파일은 해당 역할로 귀속
+
+#### reference_rate — 정규화된 참조 비율
+
+```
+reference_rate = file의 role별 count / 해당 role의 memory.md count
+```
+
+역할의 memory.md 카운트 = 역할 활성화 횟수 (분모).
+이로써 스폰 빈도에 무관한 **실제 참조율**을 얻는다.
+
+예시:
+- coder/memory.md 100회, test.md coder:10 → rate 10%
+- planner/memory.md 10회, test.md planner:8 → rate 80% → hot
+
+#### API
+
+```python
+get_access_info(rel_path)        # → (last_accessed, total_count)
+get_all_access_info()            # → {path: {last_accessed, total_count, role_counts}}
+get_role_baselines()             # → {role: memory.md_count}  (rate 계산의 분모)
+```
+
+frontmatter에는 `access_count`/`last_accessed`를 저장하지 않는다.
 
 ## 기억 수명주기
 
@@ -103,23 +143,24 @@ tags: [memory, pattern, ...]
 Hot (활발)  →  Warm (주기적)  →  Cold (미접근)  →  Archive
 ```
 
-| 상태 | 기준 | 대시보드 |
+| 상태 | 기준 (reference_rate + 경과일) | 대시보드 |
 |------|------|----------|
-| Hot | 최근 7일 내 접근 | Dataview 쿼리 자동 표시 |
-| Warm | 7일-30일 미접근 | 주기적 참조 |
-| Cold | 30일+ 미접근 | 아카이브 후보 |
-| Archive | 수동 이동 | `02-knowledge/archive/` |
+| Hot | max_rate >= 30% AND 14일 이내 접근 | Dataview 쿼리 자동 표시 |
+| Warm | max_rate >= 10% OR 7일 이내 접근 | 주기적 참조 |
+| Cold | 60일 이내 미접근 | 아카이브 후보 |
+| Archive | 60일+ 미접근 | `02-knowledge/archive/` |
 
 ### Dataview 대시보드 (`00-MOC/dashboard.md`)
 
 옵시디언 Dataview 플러그인으로 frontmatter 자동 쿼리:
 
 ```dataview
-TABLE importance, last_accessed, access_count
+TABLE importance, tags
 FROM "02-knowledge" OR "01-org/core"
-WHERE last_accessed >= date(today) - dur(7 days)
 SORT importance DESC
 ```
+
+> **Note**: `access_count`와 `last_accessed`는 `storage/access_tracker.db`에서 관리되므로 Dataview 쿼리 대상이 아니다. vault-ui 대시보드에서 확인 가능.
 
 ## 승격 규칙
 
@@ -143,21 +184,19 @@ SORT importance DESC
 
 ## 세션 프로토콜
 
-### 세션 시작 (6단계)
+### 세션 시작 (5단계)
 
 1. `01-org/head.md` — 행동 원칙 (SOUL)
 2. `01-org/user.md` — 상엽 정보
 3. `01-org/identity.md` — 에이전트 정체성
 4. `05-sessions/` — 최신 2개 파일 (최근 컨텍스트)
 5. 작업 관련 기억 검색 — tags + importance 기준
-6. 읽은 파일 frontmatter 갱신
 
 ### 세션 종료
 
 1. `05-sessions/YYYY-MM-DD.md` 세션 요약 작성
 2. 증류 대상 → `05-sessions/_distill-queue.md` 등록
 3. 의사결정 캡처 → `07-clone/decision-log.md` 추가
-4. 읽은 파일 frontmatter 최종 갱신
 
 ## Hook 연동
 

@@ -37,6 +37,7 @@ from feature_factory import dispatcher
 from feature_factory import worker_manager as wm
 from feature_factory import approval_handler
 from feature_factory import health_check
+from feature_factory import completion_detector
 from feature_factory import recovery
 
 
@@ -168,6 +169,14 @@ class FeatureFactory:
             health_check.check_worker_health()
         except Exception as e:
             log.warning("Health check error: %s", e)
+
+        # Completion detection — Stop hook 안전망
+        try:
+            detected = completion_detector.check_completions()
+            if detected:
+                log.info("Completion detector found %d completed worker(s)", detected)
+        except Exception as e:
+            log.warning("Completion detection error: %s", e)
 
         # Check approval timeouts
         try:

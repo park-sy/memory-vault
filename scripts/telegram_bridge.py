@@ -24,6 +24,7 @@ Start:
 
 import json
 import logging
+import logging.handlers
 import signal
 import sys
 import time
@@ -68,20 +69,55 @@ def _thread_id_to_topic(tg_config: TelegramConfig, thread_id: Optional[int]) -> 
     if not thread_id:
         return None
     topics = tg_config.topics
-    for name in ("ops", "approval", "report", "clone"):
-        if topics.get(name) == thread_id:
+    # 고정 + 동적 토픽 모두 검색
+    for name, topic_id in topics.all_topics().items():
+        if topic_id == thread_id:
             return name
     return None
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-log = logging.getLogger("bridge")
+def _setup_logging() -> logging.Logger:
+    """Console + rotating file logging for the bridge."""
+    logger = logging.getLogger("bridge")
+    logger.setLevel(logging.INFO)
+
+    # Console handler
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    logger.addHandler(console)
+
+    # File handler (rotating, 5MB x 3)
+    log_dir = Path(__file__).parent.parent / "storage" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.handlers.RotatingFileHandler(
+        str(log_dir / "bridge.log"),
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+log = _setup_logging()
 
 
 # ── Inbound: Telegram -> MsgBus ─────────────────────────────────────────────
+
+def _is_boss_group(update: dict, tg_config: TelegramConfig) -> bool:
+    """Check if the message is from the boss chat group."""
+    if not tg_config.boss_chat_id:
+        return False
+    chat_id = str(update.get("message", {}).get("chat", {}).get("id", ""))
+    return chat_id == str(tg_config.boss_chat_id)
+
 
 def handle_text_message(
     tg_config: TelegramConfig,
@@ -92,6 +128,23 @@ def handle_text_message(
     message = update.get("message", {})
     text = message.get("text", "").strip()
     if not text:
+        return
+
+    # Boss 그룹 메시지 → cc-boss로 라우팅
+    if _is_boss_group(update, tg_config):
+        payload_data = {
+            "text": text,
+            "telegram_from": message.get("from", {}).get("first_name", "unknown"),
+            "group": "boss",
+        }
+        msg_id = send(
+            bus_config,
+            sender="telegram",
+            recipient="cc-boss",
+            msg_type="command",
+            payload=payload_data,
+        )
+        log.info("Inbound (boss): '%s' -> cc-boss (msg #%d)", text[:50], msg_id)
         return
 
     command, arg_text = parse_command(text)
@@ -219,19 +272,31 @@ def process_outbound(
             payload = msg.payload_dict
             text = payload.get("text", msg.payload[:500])
 
-            # Add sender info
-            display_text = f"[{msg.sender}] {text}"
+            # ai-boss sender는 이미 [진수] 등 prefix 포함 → sender prefix 생략
+            if msg.sender == "ai-boss":
+                display_text = text
+            else:
+                display_text = f"[{msg.sender}] {text}"
 
             # Determine target topic from payload
             topic = payload.get("channel")
+
+            # group 필드도 channel로 처리 (하위 호환)
+            if not topic and payload.get("group"):
+                topic = payload["group"]
 
             actions = payload.get("actions")
             if actions:
                 # Send with inline keyboard
                 callback_prefix = str(msg.id)
-                result = send_with_actions(tg_config, display_text, actions, callback_prefix, topic=topic)
+                result = send_with_actions(
+                    tg_config, display_text, actions, callback_prefix,
+                    topic=topic,
+                )
             else:
-                result = send_text(tg_config, display_text, topic=topic)
+                result = send_text(
+                    tg_config, display_text, topic=topic,
+                )
 
             # Link the Telegram message ID to the MsgBus message
             tg_msg_id = result.get("message_id")

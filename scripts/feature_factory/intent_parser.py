@@ -180,7 +180,7 @@ def _parse_level1(text: str) -> Optional[Intent]:
                 "'--model', 'haiku'], "
                 "capture_output=True, text=True, timeout=30); "
                 "d = json.loads(r.stdout) if r.returncode == 0 else {}; "
-                "print(d.get('result', ''))",
+                "print(json.dumps({'result': d.get('result', ''), 'usage': d.get('usage', {})}))",
                 text, _LLM_SYSTEM_PROMPT,
             ],
             capture_output=True, text=True, timeout=45,
@@ -190,7 +190,32 @@ def _parse_level1(text: str) -> Optional[Intent]:
             log.warning("Level 1 LLM call failed: %s", result.stderr[:200])
             return None
 
-        raw = result.stdout.strip()
+        # Parse wrapper JSON to extract result + usage
+        raw_stdout = result.stdout.strip()
+        try:
+            wrapper = json.loads(raw_stdout)
+            raw = wrapper.get("result", raw_stdout)
+            usage = wrapper.get("usage", {})
+        except (json.JSONDecodeError, AttributeError):
+            raw = raw_stdout
+            usage = {}
+
+        # Log token usage
+        if usage:
+            total = (
+                usage.get("input_tokens", 0)
+                + usage.get("output_tokens", 0)
+                + usage.get("cache_read_input_tokens", 0)
+                + usage.get("cache_creation_input_tokens", 0)
+            )
+            log.info(
+                "Level 1 LLM usage: in=%d out=%d cache_read=%d total=%d",
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+                usage.get("cache_read_input_tokens", 0),
+                total,
+            )
+
         # Extract JSON from response (LLM may wrap in markdown)
         json_str = _extract_json(raw)
         if not json_str:

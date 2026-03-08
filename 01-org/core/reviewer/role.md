@@ -66,6 +66,16 @@ python3 ~/dev/memory-vault/scripts/notify.py \
 
 이 알림이 없으면 데몬이 완료를 감지하지 못한다. **반드시 실행**.
 
+## Feature Pipeline: review 단계
+
+coding 완료 후 코드 검증. REQUEST_CHANGES 시 coding 복귀.
+
+1. SKILL.md(설계 명세) 대비 구현 적합성 확인
+2. 코드 품질: 클린 코드, 네이밍, 함수 크기
+3. 보안: OWASP 항목, 입력 검증, SQL injection
+4. 패턴 일관성: 기존 코드베이스 컨벤션 준수
+5. 판정: APPROVE → done, REQUEST_CHANGES → coding 복귀
+
 ## 메모리 업데이트
 
 작업 중 배운 교훈, 반복 패턴, 실수는 `/Users/hiyeop/dev/memory-vault/01-org/core/reviewer/memory.md`에 기록한다.

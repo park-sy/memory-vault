@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Memory Vault GUI Dashboard — Static HTML Generator.
 
+.. deprecated::
+    이 스크립트는 whos-life의 ai-ops 피처로 대체되었습니다.
+    - 기억 상태: features/ai-ops/vault-monitor
+    - 조직도: features/ai-ops/vault-monitor (조직도 탭)
+    실시간 NiceGUI 대시보드를 사용하세요: http://localhost:8080 → AI Ops
+
 Reads vault frontmatter + tmux session state and generates a single HTML
 dashboard file with two tabs: Dashboard (memory monitoring) and Organization
 (org chart + session status).
@@ -21,10 +27,21 @@ import os
 import re
 import subprocess
 import sys
+import warnings
 import webbrowser
+
+warnings.warn(
+    "vault-ui.py는 deprecated입니다. "
+    "whos-life ai-ops/vault-monitor를 사용하세요. (http://localhost:8080)",
+    DeprecationWarning,
+    stacklevel=1,
+)
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from access_tracker import get_all_access_info, get_role_baselines
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
@@ -83,6 +100,7 @@ def parse_frontmatter(text: str) -> dict:
 
 def scan_vault(vault_dir: Path) -> list:
     """Scan vault for all markdown files with frontmatter."""
+    access_info = get_all_access_info()
     files = []
     for md_path in sorted(vault_dir.rglob("*.md")):
         rel = md_path.relative_to(vault_dir)
@@ -95,8 +113,15 @@ def scan_vault(vault_dir: Path) -> list:
         except (OSError, UnicodeDecodeError):
             continue
         fm = parse_frontmatter(text)
+        # access_count, last_accessed, role_counts는 DB에서 주입
+        rel_str = str(rel)
+        if rel_str in access_info:
+            info = access_info[rel_str]
+            fm["access_count"] = info["total_count"]
+            fm["last_accessed"] = info["last_accessed"]
+            fm["role_counts"] = info.get("role_counts", {})
         files.append({
-            "path": str(rel),
+            "path": rel_str,
             "name": rel.stem,
             "full_path": str(md_path),
             "frontmatter": fm,
@@ -156,16 +181,23 @@ def scan_tmux_sessions() -> list:
     return sessions
 
 
-def classify_health(file_info: dict, today: datetime) -> str:
-    """Classify memory health: hot/warm/cold/archive."""
+def classify_health(file_info: dict, today: datetime, role_baselines: dict = None) -> str:
+    """Classify memory health: hot/warm/cold/archive.
+
+    role_baselines가 제공되면 reference_rate 기반 분류 사용.
+    각 역할의 memory.md 카운트로 나눈 비율(max_rate)로 판단.
+    """
     fm = file_info.get("frontmatter", {})
     last = fm.get("last_accessed", "")
-    importance = fm.get("importance", 5)
-    if isinstance(importance, str):
-        try:
-            importance = int(importance)
-        except ValueError:
-            importance = 5
+    role_counts = fm.get("role_counts", {})
+    baselines = role_baselines or {}
+
+    # 최대 reference_rate 계산 (어느 역할에서든 가장 높은 비율)
+    max_rate = 0.0
+    for role, count in role_counts.items():
+        baseline = baselines.get(role, 1)
+        max_rate = max(max_rate, count / max(baseline, 1))
+
     if not last:
         return "cold"
     try:
@@ -173,11 +205,12 @@ def classify_health(file_info: dict, today: datetime) -> str:
     except ValueError:
         return "cold"
     days_ago = (today - last_dt).days
-    if days_ago <= 3 and importance >= 7:
+
+    if max_rate >= 0.3 and days_ago <= 14:
         return "hot"
-    if days_ago <= 7:
+    if max_rate >= 0.1 or days_ago <= 7:
         return "warm"
-    if days_ago <= 30:
+    if days_ago <= 60:
         return "cold"
     return "archive"
 
@@ -190,10 +223,11 @@ def compute_stats(files: list) -> dict:
     health_counts = Counter()
     tag_counts = Counter()
     type_counts = Counter()
+    baselines = get_role_baselines()
 
     for f in files:
         if f["has_frontmatter"]:
-            h = classify_health(f, today)
+            h = classify_health(f, today, baselines)
             f["health"] = h
             health_counts[h] += 1
             tags = f["frontmatter"].get("tags", [])

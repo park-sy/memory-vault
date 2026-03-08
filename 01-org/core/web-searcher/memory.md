@@ -2,9 +2,8 @@
 type: role-memory
 importance: 9
 created: 2026-03-01
-last_accessed: 2026-03-01
-access_count: 3
 tags: [web-searcher, core, lessons]
+
 ---
 
 # Web Searcher Memory

@@ -2,9 +2,8 @@
 type: knowledge
 importance: 8
 created: "2026-03-01"
-last_accessed: "2026-03-01"
-access_count: 1
 tags: [token, monitoring, llm, cost, rate-limit, infrastructure]
+
 ---
 
 # Token Monitoring — LLM 호출별 토큰 관리 및 모니터링

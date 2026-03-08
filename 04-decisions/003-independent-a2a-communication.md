@@ -5,9 +5,8 @@ status: proposed
 date: "2026-02-28"
 participants: ["상엽", "얍"]
 importance: 9
-last_accessed: "2026-02-28"
-access_count: 1
 tags: [architecture, a2a, communication, session, independence]
+
 ---
 
 # ADR-003: 독립 A2A 통신 체계 구축

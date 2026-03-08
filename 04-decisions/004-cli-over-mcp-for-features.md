@@ -5,9 +5,8 @@ status: accepted
 date: "2026-02-28"
 participants: ["상엽", "얍"]
 importance: 8
-last_accessed: "2026-03-01"
-access_count: 2
 tags: [architecture, cli, mcp, feature, token-efficiency]
+
 ---
 
 # ADR-004: Feature Tool 인터페이스를 MCP에서 CLI로 전환

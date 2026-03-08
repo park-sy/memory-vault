@@ -2,8 +2,8 @@
 type: clone-data
 subtype: profile
 status: inactive
-last_synthesized: 2026-02-28
-total_decisions: 16
+last_synthesized: 2026-03-07
+total_decisions: 21
 overall_accuracy: 0.00
 tags: [decision-clone, profile]
 ---
@@ -35,12 +35,13 @@ tags: [decision-clone, profile]
 |------|------|--------|------|
 | 반드시 상엽 확인 후 push | 1/1 | 1.00 | D-006 |
 
-## Tooling (2 decisions, accuracy: N/A)
+## Tooling (3 decisions, accuracy: N/A)
 
 | 성향 | 빈도 | 신뢰도 | 근거 |
 |------|------|--------|------|
-| CLI 사용 원칙 | 1/2 | 0.50 | D-007 |
-| Opus | 1/2 | 0.50 | D-009 |
+| CLI 사용 원칙 | 1/3 | 0.33 | D-007 |
+| Opus | 1/3 | 0.33 | D-009 |
+| supervision=OFF, MsgBus direct approvals, manual re-send for timing bug | 1/3 | 0.33 | D-017 |
 
 ## Trade Offs (2 decisions, accuracy: N/A)
 
@@ -48,6 +49,15 @@ tags: [decision-clone, profile]
 |------|------|--------|------|
 | 사용자 입력 우선 + 점진적 보강 | 1/2 | 0.50 | D-011 |
 | AI 고유 이점으로 전부 해소 | 1/2 | 0.50 | D-016 |
+
+## Uncategorized (4 decisions, accuracy: N/A)
+
+| 성향 | 빈도 | 신뢰도 | 근거 |
+|------|------|--------|------|
+| DB로 이관 + frontmatter에서 제거 | 1/4 | 0.25 | D-019 |
+| review 단계 추가 (Recommended) | 1/4 | 0.25 | D-021 |
+| JSONL 스캔만 (Recommended) | 1/4 | 0.25 | D-022 |
+| /feature-session으로 트리거 대고 아무것도 안적으면 1,2 둘다 해당 명령어 이후에 내가 내용 적으면 그거 위주로. | 1/4 | 0.25 | D-028 |
 
 ## Workflow (2 decisions, accuracy: N/A)
 

@@ -2,13 +2,23 @@
 type: convention
 importance: 7
 created: 2026-02-25
-last_accessed: 2026-02-27
-access_count: 1
 tags: [patterns, skeleton, api, repository-pattern]
 source: manual
+
 ---
 
 # Common Patterns
+
+## 시스템 신설 시 문서 필수
+
+새로운 시스템(데몬, DB, 자동화 파이프라인 등)을 만들면 반드시 `02-knowledge/infrastructure/`에 아키텍처 문서를 작성한다. 코드에만 지식이 남으면 새 세션이 맨땅에서 시작하게 된다.
+
+필수 포함 항목:
+- DB 위치 및 테이블 구조
+- 접근 경로 (어떤 모듈이 어떤 DB를 어떻게 접근하는지)
+- 설정 조회/변경 방법
+- 데몬/프로세스 상태 확인 방법
+- CLAUDE.md 시스템 문서 레퍼런스 테이블에 행 추가
 
 ## Skeleton Projects
 

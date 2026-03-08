@@ -38,8 +38,17 @@ purpose: "조직도"
 - [[01-org/core/web-searcher/memory]] — 누적 학습
 
 ## 운영팀
+### Orchestrator
 - [[01-org/enabling/orchestrator/role]] — 오케스트레이터 역할 정의
 - [[01-org/enabling/orchestrator/memory]] — 오케스트레이터 누적 학습
+
+### Workflow Optimizer
+- [[01-org/enabling/workflow-optimizer/role]] — 워크플로우 최적화 + 리스크 해소
+- [[01-org/enabling/workflow-optimizer/memory]] — 누적 학습
+
+### Token Optimizer
+- [[01-org/enabling/token-optimizer/role]] — 토큰 모니터링 + 효율화 분석
+- [[01-org/enabling/token-optimizer/memory]] — 누적 학습
 
 ## Related
 - [[04-decisions/002-platform-team-structure]] — 코어팀 구조 채택 ADR

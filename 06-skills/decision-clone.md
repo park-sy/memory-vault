@@ -3,8 +3,7 @@ type: skill
 importance: 8
 created: 2026-02-28
 tags: [decision-clone, methodology, automation]
-last_accessed: 2026-02-28
-access_count: 1
+
 ---
 
 # Decision Clone — 의사결정 복제 방법론

@@ -58,6 +58,60 @@ def _extract_annotations(payload: dict) -> dict:
     return {}
 
 
+def _has_question_ending(text: str) -> bool:
+    """물음표 또는 한국어 질문 종결어미로 끝나는지 판별."""
+    stripped = text.strip().rstrip(".")
+    if stripped.endswith("?"):
+        return True
+    korean_endings = [
+        "거야", "는거야", "건가", "일까", "할까", "볼까",
+        "생각엔", "어때", "같아", "뭐야", "는데",
+    ]
+    return any(stripped.endswith(e) for e in korean_endings)
+
+
+def _has_exploration_marker(text: str) -> bool:
+    """탐색/반문 마커가 포함되어 있는지 판별."""
+    markers = [
+        "뭐야", "설명해", "어때", "말해봐", "뭐가 더",
+        "다시 말해", "예를 들어", "예를들어", "너 생각",
+        "내 생각이 어때", "아닌가", "아닐까", "어떻게 생각",
+        "뭐가 중요", "이런거 말고", "개념적인거 말고",
+    ]
+    return any(m in text for m in markers)
+
+
+def _is_exploratory(answer: str, options: list) -> bool:
+    """선택이 아니라 탐색/질문인지 판별. 규칙 기반, LLM 0."""
+    stripped = answer.strip()
+
+    # 1. 질문 종결 → exploratory
+    if _has_question_ending(stripped):
+        return True
+
+    # 2. 옵션 라벨과 정확히 일치 → 명확한 선택 (not exploratory)
+    option_labels = {opt.get("label", "") for opt in options}
+    if stripped in option_labels:
+        return False
+
+    # 3. 탐색/반문 마커 → exploratory
+    if _has_exploration_marker(stripped):
+        return True
+
+    return False
+
+
+def _clean_rationale(answer: str, note: str, options: list) -> str:
+    """chosen과 rationale 중복 방지. Other 선택 시 rationale 분리."""
+    if note:
+        return note
+    # Other 선택 (옵션에 없는 자유 입력)이면 rationale을 "user-input"으로
+    option_labels = {opt.get("label", "") for opt in options}
+    if answer.strip() not in option_labels:
+        return "user-input"
+    return "auto-captured"
+
+
 def main() -> None:
     try:
         raw = sys.stdin.read()
@@ -80,8 +134,9 @@ def main() -> None:
         if not answer or not question_text:
             continue
 
-        options = [opt.get("label", "") for opt in q.get("options", [])]
-        options_str = ", ".join(options) if options else "-"
+        q_options = q.get("options", [])
+        options_labels = [opt.get("label", "") for opt in q_options]
+        options_str = ", ".join(options_labels) if options_labels else "-"
 
         # annotations에서 사용자 노트 추출
         note = ""
@@ -89,7 +144,12 @@ def main() -> None:
         if isinstance(q_ann, dict):
             note = q_ann.get("notes", "")
 
-        rationale = note if note else "auto-captured"
+        rationale = _clean_rationale(answer, note, q_options)
+
+        # 탐색/질문이면 태그에 exploratory 추가
+        tags = "auto-captured"
+        if _is_exploratory(answer, q_options):
+            tags = "auto-captured, exploratory"
 
         subprocess.run(
             [
@@ -102,7 +162,7 @@ def main() -> None:
                 rationale,
                 "--options", options_str,
                 "--confidence", "medium",
-                "--tags", "auto-captured",
+                "--tags", tags,
             ],
             capture_output=True,
             timeout=5,

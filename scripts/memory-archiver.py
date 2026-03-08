@@ -32,6 +32,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
 
+from access_tracker import get_all_access_info, get_role_baselines
+
 VAULT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVE_DIR = VAULT_DIR / "archive"
 
@@ -52,11 +54,13 @@ EXCLUDE_NAMES = {"CLAUDE.md", "_team.md", "_distill-queue.md"}
 
 @dataclass(frozen=True)
 class MemoryFile:
-    path: str          # vault root 기준 상대 경로
+    path: str                       # vault root 기준 상대 경로
     importance: int
-    access_count: int
-    last_accessed: Optional[str]  # ISO date string or None
-    cold_days: int     # last_accessed 이후 경과 일수
+    total_count: int                # 역할 합산 총 읽기
+    max_reference_rate: float       # 역할별 최대 비율
+    role_counts: dict               # {"coder": 10, "planner": 5}
+    last_accessed: Optional[str]    # ISO date string or None
+    cold_days: int                  # last_accessed 이후 경과 일수
     tags: List[str]
 
 
@@ -106,8 +110,19 @@ def _parse_tags(raw: str) -> List[str]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
-def scan_vault() -> List[MemoryFile]:
+def _calc_max_rate(role_counts: dict, baselines: dict) -> float:
+    """역할별 최대 reference_rate 계산."""
+    max_rate = 0.0
+    for role, count in role_counts.items():
+        baseline = baselines.get(role, 1)
+        max_rate = max(max_rate, count / max(baseline, 1))
+    return max_rate
+
+
+def scan_vault(db_path=None) -> List[MemoryFile]:
     """vault 내 모든 추적 대상 .md 파일을 스캔하여 MemoryFile 리스트 반환."""
+    access_info = get_all_access_info(db_path)
+    baselines = get_role_baselines(db_path)
     files = []
 
     for scan_dir in SCAN_DIRS:
@@ -125,15 +140,23 @@ def scan_vault() -> List[MemoryFile]:
 
             rel_path = str(md_file.relative_to(VAULT_DIR))
             importance = int(fm.get("importance", "5"))
-            access_count = int(fm.get("access_count", "0"))
-            last_accessed = fm.get("last_accessed")
+
+            # total_count, last_accessed, role_counts는 DB에서 조회
+            info = access_info.get(rel_path, {})
+            total_count = info.get("total_count", 0)
+            role_counts = info.get("role_counts", {})
+            last_accessed = info.get("last_accessed")
+
+            max_rate = _calc_max_rate(role_counts, baselines)
             cold_days = _days_since(last_accessed) if last_accessed else 9999
             tags = _parse_tags(fm.get("tags", ""))
 
             files.append(MemoryFile(
                 path=rel_path,
                 importance=importance,
-                access_count=access_count,
+                total_count=total_count,
+                max_reference_rate=max_rate,
+                role_counts=role_counts,
                 last_accessed=last_accessed,
                 cold_days=cold_days,
                 tags=tags,
@@ -145,14 +168,20 @@ def scan_vault() -> List[MemoryFile]:
 def find_archive_candidates(
     files: List[MemoryFile],
     max_importance: int = 3,
-    max_access: int = 2,
+    max_rate: float = 0.1,
     min_cold_days: int = 60,
 ) -> List[MemoryFile]:
-    """아카이브 후보 필터링. 세 조건 모두 충족해야 함."""
+    """아카이브 후보 필터링. 세 조건 모두 충족해야 함.
+
+    Args:
+        max_importance: importance 이하
+        max_rate: max_reference_rate 이하 (비율 기준)
+        min_cold_days: last_accessed 이후 경과 일수 이상
+    """
     return [
         f for f in files
         if f.importance <= max_importance
-        and f.access_count <= max_access
+        and f.max_reference_rate <= max_rate
         and f.cold_days >= min_cold_days
     ]
 
@@ -175,7 +204,7 @@ def generate_report(files: List[MemoryFile]) -> dict:
         "cold": len(cold),
         "high_importance_count": len(high_importance),
         "low_importance_count": len(low_importance),
-        "avg_access_count": round(sum(f.access_count for f in files) / max(len(files), 1), 1),
+        "avg_access_count": round(sum(f.total_count for f in files) / max(len(files), 1), 1),
         "cold_high_importance": [
             f.path for f in files
             if f.cold_days > 30 and f.importance >= 7
@@ -187,7 +216,7 @@ def cmd_suggest(args: argparse.Namespace) -> None:
     """아카이브 후보 제안."""
     files = scan_vault()
     candidates = find_archive_candidates(
-        files, args.max_importance, args.max_access, args.min_cold_days,
+        files, args.max_importance, args.max_rate, args.min_cold_days,
     )
 
     if args.human:
@@ -195,19 +224,24 @@ def cmd_suggest(args: argparse.Namespace) -> None:
             print("아카이브 후보가 없습니다.")
             return
         print(f"아카이브 후보: {len(candidates)}건\n")
-        print(f"{'파일':<60} {'imp':>3} {'acc':>3} {'cold':>5}")
+        print(f"{'파일':<60} {'imp':>3} {'rate':>5} {'cold':>5}")
         print("-" * 75)
         for f in sorted(candidates, key=lambda x: x.cold_days, reverse=True):
-            print(f"{f.path:<60} {f.importance:>3} {f.access_count:>3} {f.cold_days:>5}d")
+            print(f"{f.path:<60} {f.importance:>3} {f.max_reference_rate:>5.0%} {f.cold_days:>5}d")
     else:
-        print(json.dumps([asdict(c) for c in candidates], indent=2, ensure_ascii=False))
+        # frozen dataclass의 dict 변환 시 role_counts 직렬화를 위해 수동 변환
+        result = []
+        for c in candidates:
+            d = asdict(c)
+            result.append(d)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 def cmd_archive(args: argparse.Namespace) -> None:
     """아카이브 실행 (또는 dry-run)."""
     files = scan_vault()
     candidates = find_archive_candidates(
-        files, args.max_importance, args.max_access, args.min_cold_days,
+        files, args.max_importance, args.max_rate, args.min_cold_days,
     )
 
     if not candidates:
@@ -235,7 +269,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     """전체 메모리 건강도 리포트."""
     files = scan_vault()
     report = generate_report(files)
-    candidates = find_archive_candidates(files, 3, 2, 60)
+    candidates = find_archive_candidates(files, 3, 0.1, 60)
     report["archive_candidates"] = len(candidates)
 
     if args.human:
@@ -285,14 +319,14 @@ def main() -> None:
     p_suggest = sub.add_parser("suggest", help="아카이브 후보 제안")
     p_suggest.add_argument("--human", action="store_true", help="사람 읽기용 출력")
     p_suggest.add_argument("--max-importance", type=int, default=3)
-    p_suggest.add_argument("--max-access", type=int, default=2)
+    p_suggest.add_argument("--max-rate", type=float, default=0.1, help="max reference_rate 이하")
     p_suggest.add_argument("--min-cold-days", type=int, default=60)
 
     # archive
     p_archive = sub.add_parser("archive", help="아카이브 실행")
     p_archive.add_argument("--dry-run", action="store_true", help="이동 없이 미리보기")
     p_archive.add_argument("--max-importance", type=int, default=3)
-    p_archive.add_argument("--max-access", type=int, default=2)
+    p_archive.add_argument("--max-rate", type=float, default=0.1, help="max reference_rate 이하")
     p_archive.add_argument("--min-cold-days", type=int, default=60)
 
     # report

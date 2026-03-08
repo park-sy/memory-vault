@@ -2,11 +2,10 @@
 type: knowledge
 importance: 7
 created: "2026-02-22"
-last_accessed: "2026-03-01"
-access_count: 1
 tags: [auto-dev, scheduler, automation, checkpoint, pattern, distilled]
 verified_count: 3
 source: "distill from 05-sessions/2026-02-22, 2026-02-23"
+
 ---
 
 # Auto-Dev 스케줄러 아키텍처

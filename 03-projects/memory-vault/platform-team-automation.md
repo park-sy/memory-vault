@@ -4,10 +4,9 @@ importance: 8
 status: planned
 audience: [orchestrator, core-team, domain-team]
 created: "2026-02-28"
-last_accessed: "2026-02-28"
-access_count: 1
 tags: [core-team, automation, hook, script, infrastructure]
 related: ["[[002-platform-team-structure]]"]
+
 ---
 
 # 코어팀 구조 자동화 — Hook / Script / Skill 목록

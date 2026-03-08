@@ -2,11 +2,10 @@
 type: knowledge
 importance: 8
 created: "2026-02-23"
-last_accessed: "2026-03-01"
-access_count: 1
 tags: [skill-first, pipeline, feature, pattern, distilled]
 verified_count: 3
 source: "distill from 05-sessions/2026-02-23"
+
 ---
 
 # Skill-First 파이프라인

@@ -46,6 +46,9 @@ _resolve_role() {
         orchestrator)
             echo "${VAULT_DIR}/01-org/enabling/orchestrator/role.md"
             ;;
+        learning-specialist)
+            echo "${VAULT_DIR}/03-projects/learning/specialist.md"
+            ;;
         worker)
             echo "[warn] 'worker' is deprecated. Use: planner, researcher, reviewer, qa, coder" >&2
             echo ""
@@ -94,6 +97,29 @@ _send_text() {
     else
         tmux send-keys -t "$session" "$text" Enter
     fi
+}
+
+# ── Remote Control Naming ────────────────────────────────────
+
+_rename_worker() {
+    local name="$1"
+    # Claude Code 초기화 대기 후 /rename 전송
+    sleep 15
+    if tmux has-session -t "$name" 2>/dev/null; then
+        tmux send-keys -t "$name" "/rename ${name}" Enter
+    fi
+}
+
+_schedule_rename() {
+    local size="$1"
+    sleep 15
+    for i in $(seq 1 "$size"); do
+        local name="${PREFIX}-${i}"
+        if tmux has-session -t "$name" 2>/dev/null; then
+            tmux send-keys -t "$name" "/rename ${name}" Enter
+            sleep 1
+        fi
+    done
 }
 
 # ── Flag Parsing ─────────────────────────────────────────────
@@ -152,6 +178,11 @@ cmd_init() {
         echo "  [ok] $name created (role: ${role_name})"
         created=$((created + 1))
     done
+
+    # Remote Control 세션 이름 자동 설정 (백그라운드)
+    if [[ $created -gt 0 ]]; then
+        _schedule_rename "$size" &
+    fi
 
     echo "Done: ${created} workers created"
 }
@@ -299,6 +330,10 @@ cmd_reset() {
     tmux new-session -d -s "$name" -e "CC_SESSION=$name" -c "$project_dir"
     sleep 0.5
     tmux send-keys -t "$name" "$(_build_worker_cmd "$role_file")" Enter
+
+    # Remote Control 세션 이름 자동 설정 (백그라운드)
+    _rename_worker "$name" &
+
     echo "  [ok] $name restarted (role: ${role_name})"
 }
 
@@ -356,7 +391,7 @@ case "${1:-help}" in
         echo "  reset <N> [--role NAME]  Restart worker N (optionally change role)"
         echo "  watch-once            Show msgbus status"
         echo ""
-        echo "Roles: planner, researcher, reviewer, qa, coder (default), web-searcher, orchestrator"
+        echo "Roles: planner, researcher, reviewer, qa, coder (default), web-searcher, orchestrator, learning-specialist"
         echo "       or absolute path to role file"
         echo ""
         echo "Examples:"

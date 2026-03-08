@@ -10,6 +10,8 @@ Usage:
     python3 scripts/decision-clone.py seed
     python3 scripts/decision-clone.py synthesize
     python3 scripts/decision-clone.py score <ID> <correct|wrong|partial> ["feedback"]
+    python3 scripts/decision-clone.py tag <ID> <tag>
+    python3 scripts/decision-clone.py batch-score
     python3 scripts/decision-clone.py clone-review
 """
 
@@ -379,11 +381,14 @@ def cmd_list(args) -> None:
 
 def cmd_stats(args) -> None:
     """Show decision statistics."""
-    decisions = parse_decisions(DECISION_LOG)
+    all_decisions = parse_decisions(DECISION_LOG)
 
-    if not decisions:
+    if not all_decisions:
         print("No decisions found.")
         return
+
+    exploratory = [d for d in all_decisions if not _is_decision(d)]
+    decisions = [d for d in all_decisions if _is_decision(d)]
 
     cat_counts = Counter(d.category for d in decisions)
     outcome_counts = Counter(d.outcome for d in decisions)
@@ -407,7 +412,10 @@ def cmd_stats(args) -> None:
 
     print("Decision Clone Stats")
     print("=" * 50)
-    print(f"  Total decisions: {total}")
+    print(f"  Total entries: {len(all_decisions)}")
+    if exploratory:
+        print(f"  Exploratory (filtered): {len(exploratory)}")
+    print(f"  Valid decisions: {total}")
     if total:
         print(f"  Reviewed: {len(reviewed)} ({len(reviewed)/total*100:.0f}%)")
     print()
@@ -445,13 +453,24 @@ def cmd_seed(args) -> None:
     print(f"Seeded {len(numbered)} decisions from session history.")
 
 
+def _is_decision(d: Decision) -> bool:
+    """exploratory 태그가 있으면 결정이 아닌 탐색."""
+    return "exploratory" not in d.tags
+
+
 def cmd_synthesize(args) -> None:
     """Synthesize profile from decision log."""
-    decisions = parse_decisions(DECISION_LOG)
+    all_decisions = parse_decisions(DECISION_LOG)
 
-    if not decisions:
+    if not all_decisions:
         print("No decisions to synthesize.")
         return
+
+    # exploratory 필터링
+    decisions = [d for d in all_decisions if _is_decision(d)]
+    skipped = len(all_decisions) - len(decisions)
+    if skipped:
+        print(f"Filtered {skipped} exploratory entries.")
 
     by_cat = defaultdict(list)
     for d in decisions:
@@ -585,6 +604,93 @@ def cmd_score(args) -> None:
     print(msg)
 
 
+def cmd_tag(args) -> None:
+    """Add a tag to an existing decision entry."""
+    decisions = parse_decisions(DECISION_LOG)
+    target_idx = None
+    for i, d in enumerate(decisions):
+        if d.id == args.id.upper():
+            target_idx = i
+            break
+
+    if target_idx is None:
+        print(f"Error: {args.id} not found.")
+        sys.exit(1)
+
+    target = decisions[target_idx]
+    existing_tags = {t.strip() for t in target.tags.split(",") if t.strip()}
+    new_tag = args.tag.strip()
+    if new_tag in existing_tags:
+        print(f"{target.id} already has tag '{new_tag}'.")
+        return
+
+    updated_tags = ", ".join(sorted(existing_tags | {new_tag}))
+    updated_target = target.with_update(tags=updated_tags)
+    updated = [*decisions[:target_idx], updated_target, *decisions[target_idx + 1:]]
+    created = updated[0].date if updated else date.today().isoformat()
+    write_decisions(DECISION_LOG, updated, created)
+    print(f"Tagged {updated_target.id}: {updated_tags}")
+
+
+def cmd_batch_score(args) -> None:
+    """Interactive batch scoring of pending decisions."""
+    decisions = parse_decisions(DECISION_LOG)
+    pending = [d for d in decisions if d.outcome == "pending" and _is_decision(d)]
+
+    if not pending:
+        print("No pending decisions to score.")
+        return
+
+    print(f"Pending decisions: {len(pending)}")
+    print("For each: [c]orrect / [w]rong / [p]artial / [s]kip / [q]uit\n")
+
+    scored = 0
+    for d in pending:
+        print(f"  {d.id} | {d.category} | {d.date}")
+        print(f"    Context: {d.context}")
+        print(f"    Chosen: {d.chosen}")
+        print(f"    Rationale: {d.rationale}")
+
+        try:
+            choice = input("  Score> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            break
+
+        if choice == "q":
+            break
+        if choice == "s":
+            print()
+            continue
+
+        outcome_map = {"c": "correct", "w": "wrong", "p": "partial"}
+        outcome = outcome_map.get(choice)
+        if not outcome:
+            print(f"  Unknown input '{choice}', skipping.\n")
+            continue
+
+        # Re-parse to avoid stale state
+        fresh = parse_decisions(DECISION_LOG)
+        fresh_idx = None
+        for i, fd in enumerate(fresh):
+            if fd.id == d.id:
+                fresh_idx = i
+                break
+
+        if fresh_idx is None:
+            print(f"  {d.id} disappeared, skipping.\n")
+            continue
+
+        updated_target = fresh[fresh_idx].with_update(outcome=outcome)
+        updated = [*fresh[:fresh_idx], updated_target, *fresh[fresh_idx + 1:]]
+        created = updated[0].date if updated else date.today().isoformat()
+        write_decisions(DECISION_LOG, updated, created)
+        scored += 1
+        print(f"  → {outcome}\n")
+
+    print(f"Scored {scored} decisions.")
+
+
 def cmd_clone_review(args) -> None:
     """Show clone decisions pending review."""
     if not CLONE_DECISIONS.exists():
@@ -651,6 +757,14 @@ def main() -> None:
         "feedback", nargs="?", default="", help="Optional feedback"
     )
 
+    # tag
+    p_tag = sub.add_parser("tag", help="Add a tag to a decision")
+    p_tag.add_argument("id", help="Decision ID (e.g., D-018)")
+    p_tag.add_argument("tag", help="Tag to add (e.g., exploratory)")
+
+    # batch-score
+    sub.add_parser("batch-score", help="Interactive batch scoring of pending decisions")
+
     # clone-review
     sub.add_parser("clone-review", help="Review pending clone decisions")
 
@@ -665,6 +779,8 @@ def main() -> None:
         "seed": cmd_seed,
         "synthesize": cmd_synthesize,
         "score": cmd_score,
+        "tag": cmd_tag,
+        "batch-score": cmd_batch_score,
         "clone-review": cmd_clone_review,
     }
 

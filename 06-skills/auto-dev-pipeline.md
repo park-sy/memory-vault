@@ -2,9 +2,8 @@
 type: skill
 importance: 8
 created: 2026-02-23
-last_accessed: 2026-02-27
-access_count: 1
 tags: [auto-dev, pipeline, orchestration, tmux]
+
 ---
 
 # Auto-Dev Pipeline Skill

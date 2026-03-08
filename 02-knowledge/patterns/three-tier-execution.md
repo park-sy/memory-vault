@@ -2,11 +2,10 @@
 type: knowledge
 importance: 8
 created: "2026-02-22"
-last_accessed: "2026-03-01"
-access_count: 2
 tags: [execution-model, llm, token-efficiency, pattern, distilled]
 verified_count: 3
 source: "distill from 05-sessions/2026-02-22"
+
 ---
 
 # 3단계 실행 모델 (Three-Tier Execution)
