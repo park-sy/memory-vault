@@ -278,12 +278,18 @@ def process_outbound(
             else:
                 display_text = f"[{msg.sender}] {text}"
 
-            # Determine target topic from payload
+            # Determine target topic and chat_id from payload
             topic = payload.get("channel")
 
             # group 필드도 channel로 처리 (하위 호환)
             if not topic and payload.get("group"):
                 topic = payload["group"]
+
+            # boss 채널 → 전용 그룹으로 직접 전송 (토픽 없음)
+            target_chat_id = None
+            if topic == "boss" and tg_config.boss_chat_id:
+                target_chat_id = tg_config.boss_chat_id
+                topic = None  # 전용 그룹은 토픽 불필요
 
             actions = payload.get("actions")
             if actions:
@@ -291,11 +297,12 @@ def process_outbound(
                 callback_prefix = str(msg.id)
                 result = send_with_actions(
                     tg_config, display_text, actions, callback_prefix,
-                    topic=topic,
+                    topic=topic, chat_id=target_chat_id,
                 )
             else:
                 result = send_text(
                     tg_config, display_text, topic=topic,
+                    chat_id=target_chat_id,
                 )
 
             # Link the Telegram message ID to the MsgBus message
