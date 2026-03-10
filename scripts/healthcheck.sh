@@ -33,6 +33,7 @@ mkdir -p "$LOG_DIR"
 SERVICES="
 bridge cc-telegram-bridge python3 scripts/telegram_bridge.py
 factory cc-factory python3 scripts/feature-factory.py
+boss cc-boss-daemon python3 scripts/ai_boss/boss_daemon.py
 "
 
 ts() {

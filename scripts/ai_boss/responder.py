@@ -8,11 +8,17 @@ bridge가 boss 그룹 메시지를 cc-boss로 라우팅하면,
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# tmux/launchd 환경에서 claude CLI를 찾기 위한 PATH 보정
+_EXTRA_PATH = str(Path.home() / ".local" / "bin")
+if _EXTRA_PATH not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_EXTRA_PATH}:{os.environ.get('PATH', '')}"
 
 from ai_boss import db
 from ai_boss.selector import select_bosses_for_message

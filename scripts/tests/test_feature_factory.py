@@ -1297,6 +1297,119 @@ def test_db_migration_revise_status(s: Suite) -> None:
         os.unlink(test_db_path)
 
 
+# ── Approval Summary tests ───────────────────────────────────────────────────
+
+def test_approval_summary_spec(s: Suite) -> None:
+    """spec_to_queued 게이트 요약 생성."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {
+        "description": "memory-vault/whos-life 작업물을 정리하여 AI 회사 메일링 + 블로그 포스팅.",
+        "priority": 7,
+        "category": "automation",
+    }
+    result = _build_approval_summary("spec_to_queued", ctx)
+    s.check_contains("desc included", "memory-vault/whos-life", result)
+    s.check_contains("priority included", "7", result)
+    s.check_contains("category included", "automation", result)
+
+
+def test_approval_summary_spec_truncation(s: Suite) -> None:
+    """description이 200자 초과 시 truncation."""
+    from feature_factory.notifier import _build_approval_summary
+
+    long_desc = "A" * 250
+    ctx = {"description": long_desc, "priority": 5, "category": ""}
+    result = _build_approval_summary("spec_to_queued", ctx)
+    s.check("truncated", len(result.split("\n")[0]) < 220, f"len={len(result.split(chr(10))[0])}")
+    s.check_contains("ellipsis", "...", result)
+
+
+def test_approval_summary_spec_empty(s: Suite) -> None:
+    """description도 priority도 없으면 빈 문자열."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {"description": "", "priority": "-", "category": ""}
+    result = _build_approval_summary("spec_to_queued", ctx)
+    s.check_eq("empty when no data", "", result)
+
+
+def test_approval_summary_plan(s: Suite) -> None:
+    """design_plan / coding_plan 게이트 요약 생성."""
+    from feature_factory.notifier import _build_approval_summary
+
+    plan = {
+        "steps": [
+            {"name": "템플릿 구조 설계"},
+            {"name": "수집기 구현"},
+            {"name": "렌더러 구현"},
+            {"name": "스케줄러 등록"},
+        ],
+        "files": ["publisher.py", "templates/", "scheduler.py"],
+    }
+    ctx = {"plan": plan}
+    result = _build_approval_summary("design_plan", ctx)
+    s.check_contains("step count", "4단계", result)
+    s.check_contains("step name", "템플릿 구조 설계", result)
+    s.check_contains("files", "publisher.py", result)
+
+    # coding_plan도 동일 로직
+    result2 = _build_approval_summary("coding_plan", ctx)
+    s.check_contains("coding_plan also works", "4단계", result2)
+
+
+def test_approval_summary_plan_string(s: Suite) -> None:
+    """plan이 JSON 문자열일 때도 파싱."""
+    from feature_factory.notifier import _build_approval_summary
+
+    plan_json = json.dumps({"steps": [{"name": "step1"}, {"name": "step2"}]})
+    ctx = {"plan": plan_json}
+    result = _build_approval_summary("design_plan", ctx)
+    s.check_contains("parsed string plan", "2단계", result)
+
+
+def test_approval_summary_plan_empty(s: Suite) -> None:
+    """plan이 없으면 빈 문자열."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {"plan": None}
+    result = _build_approval_summary("design_plan", ctx)
+    s.check_eq("empty when no plan", "", result)
+
+
+def test_approval_summary_testing(s: Suite) -> None:
+    """testing_to_stable 게이트 요약 생성."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {
+        "test_runs": 5,
+        "test_successes": 5,
+        "last_test_at": "2026-03-08T15:30:00+00:00",
+    }
+    result = _build_approval_summary("testing_to_stable", ctx)
+    s.check_contains("run count", "5회 실행", result)
+    s.check_contains("success count", "5회 성공", result)
+    s.check_contains("percentage", "100%", result)
+    s.check_contains("last test at", "2026-03-08 15:30", result)
+
+
+def test_approval_summary_testing_no_runs(s: Suite) -> None:
+    """테스트 실행이 없으면 빈 문자열."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {"test_runs": 0, "test_successes": 0, "last_test_at": ""}
+    result = _build_approval_summary("testing_to_stable", ctx)
+    s.check_eq("empty when no runs", "", result)
+
+
+def test_approval_summary_unknown_gate(s: Suite) -> None:
+    """알 수 없는 gate type이면 빈 문자열 (graceful fallback)."""
+    from feature_factory.notifier import _build_approval_summary
+
+    result = _build_approval_summary("unknown_gate", {"description": "test"})
+    s.check_eq("empty for unknown gate", "", result)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1345,6 +1458,16 @@ def main():
         ("worker_action_links", test_worker_action_links),
         ("approval_actions_revise", test_approval_actions_include_revise),
         ("db_migration_revise", test_db_migration_revise_status),
+        # Approval summary context
+        ("summary_spec", test_approval_summary_spec),
+        ("summary_spec_truncation", test_approval_summary_spec_truncation),
+        ("summary_spec_empty", test_approval_summary_spec_empty),
+        ("summary_plan", test_approval_summary_plan),
+        ("summary_plan_string", test_approval_summary_plan_string),
+        ("summary_plan_empty", test_approval_summary_plan_empty),
+        ("summary_testing", test_approval_summary_testing),
+        ("summary_testing_no_runs", test_approval_summary_testing_no_runs),
+        ("summary_unknown_gate", test_approval_summary_unknown_gate),
     ]
 
     for name, fn in suites:

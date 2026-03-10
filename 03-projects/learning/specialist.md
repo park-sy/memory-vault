@@ -14,8 +14,9 @@ tags: [learning, role, domain, specialist]
 ## 읽어야 할 파일
 
 1. [[03-projects/learning/context]] — 도메인 컨텍스트 (학습 프로필, 핵심 가설, 검증 현황)
-2. [[03-projects/learning/specialist-memory]] — 누적 학습 도메인 지식
-3. `03-projects/learning/methods/_index.md` — 학습 방법 라이브러리 인덱스
+2. [[03-projects/learning/active-session]] — 활성 학습 세션 (현재 주제, 진행도, 히스토리)
+3. [[03-projects/learning/specialist-memory]] — 누적 학습 도메인 지식
+4. `03-projects/learning/methods/_index.md` — 학습 방법 라이브러리 인덱스
 
 ## 핵심 책임
 
@@ -93,15 +94,34 @@ tags: [learning, role, domain, specialist]
 | 새 방법 발명 완료 | `METHOD_INVENTED` |
 | 외부 탐색 완료 | `SCOUT_DONE` |
 
+## 학습 세션 규칙
+
+### 세션 시작 시
+1. `active-session.md` 읽어서 현재 진행 상태 파악
+2. "지난번에 {주제}까지 했는데, 이어서 할까?" 식으로 컨텍스트 복원
+3. context.md의 비유 재료 참조
+
+### 세션 종료 시 (필수)
+1. `active-session.md`에 세션 기록 추가 (S-N 템플릿)
+2. 대화 중 상엽이 꺼낸 새 경험 → context.md 비유 재료에 추가
+3. 현재 진행 상태 업데이트
+
+### 학습 진행 원칙
+- **짧은 단위**: 한 세션에 핵심 개념 1-2개. 욕심내지 않기
+- **비유 먼저**: 개념 설명 전에 상엽 경험에서 비유 재료 찾기
+- **disanalogy 명시**: 비유의 한계를 항상 짚기
+- **이해도 확인**: 설명 후 상엽에게 자기 말로 다시 설명하게 하기
+
 ## 작업 흐름
 
 ```
 역할 진입
-  → specialist.md + context.md + specialist-memory.md 로드
+  → specialist.md + context.md + active-session.md + specialist-memory.md 로드
   → methods/_index.md 로드
-  → 상엽과 대화로 실험 방향 결정
-  → 실험 설계/실행/분석
-  → experiment-log.md에 기록
+  → active-session.md에서 이전 상태 복원
+  → 학습 세션 진행 (contextual analogy)
+  → 세션 종료 시 active-session.md 업데이트
+  → experiment-log.md에 실험 기록
   → 결과에 따라 context.md, methods/{name}.md 업데이트
   → specialist-memory.md에 교훈 기록
 ```

@@ -56,10 +56,12 @@ def send_notification(
 
 def notify_approval_request(
     task_id: int, title: str, gate_type: str,
+    context: Optional[dict] = None,
 ) -> Optional[int]:
     """Send an approval request with approve/reject buttons.
 
     gate별 artifact 파일이 있으면 먼저 파일을 전송한 뒤 승인 버튼 메시지를 보냄.
+    context가 있으면 gate별 요약을 메시지 본문에 포함.
     """
     gate_labels = {
         "spec_to_queued": "Spec 승인",
@@ -74,7 +76,19 @@ def notify_approval_request(
     if artifact:
         _send_artifact_file(task_id, title, label, artifact)
 
-    message = f"[Feature Factory] {label}\nTask #{task_id}: {title}\n\n승인하시겠습니까?"
+    # testing_to_stable: 테스트 로그 파일도 첨부
+    if gate_type == "testing_to_stable":
+        test_log = _find_latest_test_log(title)
+        if test_log:
+            _send_artifact_file(task_id, title, label, test_log)
+
+    # 요약 텍스트 생성
+    summary = _build_approval_summary(gate_type, context) if context else ""
+    parts = [f"[Feature Factory] {label}", f"Task #{task_id}: {title}"]
+    if summary:
+        parts.append(summary)
+    parts.append("승인하시겠습니까?")
+    message = "\n\n".join(parts)
     return send_notification(
         message,
         channel=CHANNEL_APPROVAL,
@@ -130,10 +144,17 @@ def notify_error(task_id: int, title: str, error: str) -> Optional[int]:
 
 def notify_approval_timeout(task_id: int, title: str, gate_type: str) -> Optional[int]:
     """Remind user about pending approval."""
+    gate_labels = {
+        "spec_to_queued": "Spec 승인",
+        "design_plan": "설계 계획 승인",
+        "testing_to_stable": "Testing → Stable 승인",
+        "coding_plan": "구현 계획 승인",
+    }
+    label = gate_labels.get(gate_type, gate_type)
     message = (
         f"[Feature Factory] 승인 대기 중 (30분+)\n"
         f"Task #{task_id}: {title}\n"
-        f"Gate: {gate_type}"
+        f"Gate: {label}"
     )
     return send_notification(message, channel=CHANNEL_APPROVAL, priority=2)
 
@@ -173,6 +194,114 @@ def _worker_action_links(worker_id: int) -> str:
         f"`tmux attach -t {session}`\n"
         f"[Claude 앱 열기]({_CLAUDE_CODE_LINK})"
     )
+
+
+# ── Approval Summary ─────────────────────────────────────────────────────────
+
+def _build_approval_summary(gate_type: str, context: dict) -> str:
+    """gate 종류에 따라 승인 메시지에 포함할 요약 텍스트를 생성한다."""
+    try:
+        if gate_type == "spec_to_queued":
+            return _summary_spec(context)
+        elif gate_type in ("design_plan", "coding_plan"):
+            return _summary_plan(context)
+        elif gate_type == "testing_to_stable":
+            return _summary_testing(context)
+    except Exception as e:
+        log.warning("Failed to build approval summary for gate %s: %s", gate_type, e, exc_info=True)
+    return ""
+
+
+def _summary_spec(ctx: dict) -> str:
+    """spec_to_queued: description + priority + category."""
+    desc = ctx.get("description", "")
+    if len(desc) > 200:
+        desc = desc[:197] + "..."
+    priority = ctx.get("priority", "-")
+    category = ctx.get("category") or "-"
+
+    if not desc and priority == "-":
+        return ""
+
+    lines = []
+    if desc:
+        lines.append(f"\U0001F4CB {desc}")
+    lines.append(f"우선순위: {priority} | 카테고리: {category}")
+    return "\n".join(lines)
+
+
+def _summary_plan(ctx: dict) -> str:
+    """design_plan / coding_plan: plan 요약 (단계 수, 주요 파일)."""
+    plan = ctx.get("plan")
+    if not plan:
+        return ""
+
+    # plan이 문자열이면 파싱 시도
+    if isinstance(plan, str):
+        try:
+            plan = json.loads(plan)
+        except (json.JSONDecodeError, TypeError):
+            return ""
+
+    if not isinstance(plan, dict):
+        return ""
+
+    steps = plan.get("steps") or plan.get("phases") or plan.get("tasks") or []
+    if not isinstance(steps, list):
+        return ""
+    step_count = len(steps)
+    if step_count == 0:
+        return ""
+
+    lines = [f"\U0001F4D0 계획: {step_count}단계"]
+    for i, step in enumerate(steps[:6], 1):
+        name = ""
+        if isinstance(step, dict):
+            name = step.get("name") or step.get("title") or step.get("description", "")
+        elif isinstance(step, str):
+            name = step
+        if name:
+            lines.append(f"   {i}. {name}")
+
+    # 주요 파일 추출
+    files = plan.get("files") or plan.get("key_files") or plan.get("affected_files") or []
+    if files:
+        file_list = ", ".join(str(f) for f in files[:5])
+        lines.append(f"주요 파일: {file_list}")
+
+    return "\n".join(lines)
+
+
+def _summary_testing(ctx: dict) -> str:
+    """testing_to_stable: 테스트 결과 요약."""
+    runs = ctx.get("test_runs") or 0
+    successes = ctx.get("test_successes") or 0
+    last_at = ctx.get("last_test_at") or ""
+
+    if not runs:
+        return ""
+
+    pct = round(successes / runs * 100)
+    lines = [f"\U0001F9EA 테스트: {runs}회 실행, {successes}회 성공 ({pct}%)"]
+    if last_at:
+        # ISO → 사람 읽기 좋은 형태 (초 제거)
+        display_at = last_at[:16].replace("T", " ") if "T" in last_at else last_at
+        lines.append(f"   마지막 실행: {display_at}")
+
+    return "\n".join(lines)
+
+
+def _find_latest_test_log(title: str) -> Optional[str]:
+    """testing 게이트용: 가장 최근 테스트 로그 파일 경로를 찾는다."""
+    slug = _title_to_slug(title)
+    logs_dir = WHOS_LIFE_DIR / "skills" / slug / "logs"
+    if not logs_dir.exists():
+        return None
+
+    test_files = sorted(logs_dir.glob("test-*.md"), reverse=True)
+    if test_files:
+        return str(test_files[0])
+    return None
 
 
 # ── Artifact helpers ──────────────────────────────────────────────────────────

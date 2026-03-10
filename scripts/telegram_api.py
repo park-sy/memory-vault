@@ -60,6 +60,7 @@ class TelegramConfig:
     bot_token: str
     chat_id: str
     boss_chat_id: str = ""
+    lifelog_chat_id: str = ""
     topics: TopicConfig = TopicConfig()
     api_base: str = "https://api.telegram.org"
     timeout: int = 10
@@ -130,10 +131,12 @@ def load_config() -> TelegramConfig:
     )
 
     boss_chat_id = os.environ.get("TELEGRAM_BOSS_CHAT_ID", "")
+    lifelog_chat_id = os.environ.get("TELEGRAM_LIFELOG_CHAT_ID", "")
 
     return TelegramConfig(
         bot_token=bot_token, chat_id=chat_id,
-        boss_chat_id=boss_chat_id, topics=topics,
+        boss_chat_id=boss_chat_id, lifelog_chat_id=lifelog_chat_id,
+        topics=topics,
     )
 
 
@@ -429,6 +432,8 @@ def is_authorized(update: dict, config: TelegramConfig) -> bool:
     allowed = {str(config.chat_id)}
     if config.boss_chat_id:
         allowed.add(str(config.boss_chat_id))
+    if config.lifelog_chat_id:
+        allowed.add(str(config.lifelog_chat_id))
 
     return chat_id in allowed
 

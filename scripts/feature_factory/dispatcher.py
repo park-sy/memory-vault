@@ -318,7 +318,8 @@ def _handle_stage_complete(task_id: int, stage: str, sender: str) -> None:
     elif stage == "spec":
         # spec done → request approval to queue
         notifier.notify_stage_complete(task_id, title, "spec")
-        approval_handler.request_approval(task_id, title, "spec_to_queued")
+        context = result.data if result.success else None
+        approval_handler.request_approval(task_id, title, "spec_to_queued", context=context)
 
     elif stage == "designing":
         # designing done → advance to testing
@@ -328,7 +329,8 @@ def _handle_stage_complete(task_id: int, stage: str, sender: str) -> None:
     elif stage == "testing":
         # testing done → request approval to stable
         notifier.notify_stage_complete(task_id, title, "testing")
-        approval_handler.request_approval(task_id, title, "testing_to_stable")
+        context = result.data if result.success else None
+        approval_handler.request_approval(task_id, title, "testing_to_stable", context=context)
 
     elif stage == "coding":
         # coding done → advance to done
@@ -459,7 +461,7 @@ def tick_pipeline() -> None:
                 stage_counts["designing"] = stage_counts.get("designing", 0) + 1
 
         elif stage == "designing" and plan_status == "pending_review":
-            approval_handler.request_approval(task_id, title, "design_plan")
+            approval_handler.request_approval(task_id, title, "design_plan", context=dict(item))
 
         elif stage in ("designing",) and plan_status in (None, "approved"):
             if current_in_stage >= stage_limit:
@@ -477,7 +479,7 @@ def tick_pipeline() -> None:
                 stage_counts["coding"] = stage_counts.get("coding", 0) + 1
 
         elif stage == "coding" and plan_status == "pending_review":
-            approval_handler.request_approval(task_id, title, "coding_plan")
+            approval_handler.request_approval(task_id, title, "coding_plan", context=dict(item))
 
         elif stage == "coding" and plan_status in (None, "approved"):
             if current_in_stage >= stage_limit:

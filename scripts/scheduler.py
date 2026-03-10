@@ -103,23 +103,39 @@ def _match_cron_field(field: str, value: int, max_val: int) -> bool:
     return False
 
 
+TICK_INTERVAL_MINUTES = 5  # launchd StartInterval / 60
+
+
 def _cron_matches(schedule: str, now: datetime) -> bool:
     """Check if a cron expression matches the given datetime.
 
     Format: minute hour day_of_month month day_of_week
+
+    launchd tick은 정확히 정각에 오지 않으므로, tick 간격(5분) 윈도우 내의
+    모든 분을 체크한다. 예: tick이 09:02에 오면 09:00~09:04를 모두 확인.
     """
     parts = schedule.split()
     if len(parts) != 5:
         return False
 
     minute, hour, dom, month, dow = parts
-    return (
-        _match_cron_field(minute, now.minute, 59)
-        and _match_cron_field(hour, now.hour, 23)
+
+    # hour/dom/month/dow는 현재 시각으로 정확히 매칭
+    if not (
+        _match_cron_field(hour, now.hour, 23)
         and _match_cron_field(dom, now.day, 31)
         and _match_cron_field(month, now.month, 12)
-        and _match_cron_field(dow, now.weekday(), 6)  # 0=Mon
-    )
+        and _match_cron_field(dow, (now.weekday() + 1) % 7, 6)  # 0=Sun
+    ):
+        return False
+
+    # minute은 tick 윈도우 내에서 매칭 — 현재 분부터 (간격-1)분 전까지 확인
+    for offset in range(TICK_INTERVAL_MINUTES):
+        candidate = (now.minute - offset) % 60
+        if _match_cron_field(minute, candidate, 59):
+            return True
+
+    return False
 
 
 # ── Token Monitor Query ────────────────────────────────────────────────────
@@ -347,6 +363,15 @@ def cmd_tick(args) -> None:
         # Check cron schedule
         if not _cron_matches(job_dict["schedule"], now):
             continue
+
+        # Deduplicate: skip if already ran within this tick window
+        if job_dict["last_run"]:
+            try:
+                last_dt = datetime.fromisoformat(job_dict["last_run"])
+                if (now - last_dt).total_seconds() < TICK_INTERVAL_MINUTES * 60:
+                    continue
+            except (ValueError, TypeError):
+                pass
 
         # Check conditions
         passed, reason = _check_conditions(job_dict["conditions"], job_dict["last_run"])
@@ -587,6 +612,33 @@ def cmd_seed(args) -> None:
             "python3 scripts/decision-clone.py synthesize",
             "script",
             json.dumps({"min_interval_hours": 144}),
+            120,
+        ),
+        (
+            "ai-boss-morning",
+            "AI Boss 오전 체크인",
+            "0 9 * * *",
+            "python3 scripts/ai_boss/checkin.py morning",
+            "script",
+            json.dumps({"require_service": "bridge", "time_range": "08:00-11:00"}),
+            120,
+        ),
+        (
+            "ai-boss-evening",
+            "AI Boss 저녁 체크인",
+            "0 18 * * *",
+            "python3 scripts/ai_boss/checkin.py evening",
+            "script",
+            json.dumps({"require_service": "bridge", "time_range": "17:00-20:00"}),
+            120,
+        ),
+        (
+            "ai-boss-weekly",
+            "AI Boss 주간 리뷰",
+            "0 17 * * 5",
+            "python3 scripts/ai_boss/checkin.py weekly",
+            "script",
+            json.dumps({"require_service": "bridge", "day_of_week": [4], "min_interval_hours": 144}),
             120,
         ),
     ]

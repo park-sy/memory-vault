@@ -26,6 +26,7 @@ import json
 import logging
 import logging.handlers
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -52,6 +53,9 @@ MAX_BACKOFF = 60                # max exponential backoff seconds
 CLEANUP_INTERVAL = 300          # cleanup expired messages every 5 min
 
 # Command -> recipient routing table
+VAULT_DIR = Path(__file__).parent.parent
+LOG_DIR = VAULT_DIR / "storage" / "logs"
+
 COMMAND_ROUTES = {
     "pool1": "cc-pool-1",
     "pool2": "cc-pool-2",
@@ -119,6 +123,14 @@ def _is_boss_group(update: dict, tg_config: TelegramConfig) -> bool:
     return chat_id == str(tg_config.boss_chat_id)
 
 
+def _is_lifelog_group(update: dict, tg_config: TelegramConfig) -> bool:
+    """Check if the message is from the lifelog chat group."""
+    if not tg_config.lifelog_chat_id:
+        return False
+    chat_id = str(update.get("message", {}).get("chat", {}).get("id", ""))
+    return chat_id == str(tg_config.lifelog_chat_id)
+
+
 def handle_text_message(
     tg_config: TelegramConfig,
     bus_config: MsgBusConfig,
@@ -128,6 +140,20 @@ def handle_text_message(
     message = update.get("message", {})
     text = message.get("text", "").strip()
     if not text:
+        return
+
+    # Lifelog 그룹 메시지 → ingest.py fire-and-forget
+    if _is_lifelog_group(update, tg_config):
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        ingest_script = str(VAULT_DIR / "scripts" / "lifelog" / "ingest.py")
+        with open(str(LOG_DIR / "lifelog-ingest.log"), "a") as err_log:
+            subprocess.Popen(
+                ["python3", ingest_script, text],
+                cwd=str(VAULT_DIR),
+                stdout=subprocess.DEVNULL,
+                stderr=err_log,
+            )
+        log.info("Inbound (lifelog): '%s' -> ingest.py", text[:50])
         return
 
     # Boss 그룹 메시지 → cc-boss로 라우팅

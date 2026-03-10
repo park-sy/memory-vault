@@ -14,8 +14,14 @@ from . import pipeline_manager as pm
 log = logging.getLogger("factory.approval")
 
 
-def request_approval(task_id: int, title: str, gate_type: str) -> Optional[int]:
+def request_approval(
+    task_id: int, title: str, gate_type: str,
+    context: Optional[dict] = None,
+) -> Optional[int]:
     """Send an approval request and track it.
+
+    Args:
+        context: task detail dict (description, priority, plan, test_runs 등).
 
     Returns the approval ID if successful, None otherwise.
     """
@@ -31,7 +37,7 @@ def request_approval(task_id: int, title: str, gate_type: str) -> Optional[int]:
             return appr.id
 
     # Send Telegram notification
-    msg_id = notifier.notify_approval_request(task_id, title, gate_type)
+    msg_id = notifier.notify_approval_request(task_id, title, gate_type, context=context)
     if msg_id is None:
         log.error("Failed to send approval notification for task %d", task_id)
         return None
@@ -198,7 +204,9 @@ def check_timeouts() -> int:
             if elapsed < approval_timeout:
                 continue
 
-        notifier.notify_approval_timeout(appr.task_id, f"Task #{appr.task_id}", appr.gate_type)
+        result = pm.get_task_detail(appr.task_id)
+        title = result.data.get("title", f"Task #{appr.task_id}") if result.success else f"Task #{appr.task_id}"
+        notifier.notify_approval_timeout(appr.task_id, title, appr.gate_type)
         db.log_event(appr.task_id, "approval_reminder", {
             "gate_type": appr.gate_type, "approval_id": appr.id,
         })

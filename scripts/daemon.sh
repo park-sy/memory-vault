@@ -27,12 +27,13 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 # ── Service Definitions ──────────────────────────────────────────────────────
 # Bash 3.2 compatible — no associative arrays.
 
-ALL_SERVICES="bridge factory"
+ALL_SERVICES="bridge factory boss"
 
 _session_name() {
     case "$1" in
         bridge)  echo "cc-telegram-bridge" ;;
         factory) echo "cc-factory" ;;
+        boss)    echo "cc-boss-daemon" ;;
         *) echo ""; return 1 ;;
     esac
 }
@@ -41,13 +42,14 @@ _command() {
     case "$1" in
         bridge)  echo "python3 scripts/telegram_bridge.py" ;;
         factory) echo "python3 scripts/feature-factory.py" ;;
+        boss)    echo "python3 scripts/ai_boss/boss_daemon.py" ;;
         *) echo ""; return 1 ;;
     esac
 }
 
 _is_known_service() {
     case "$1" in
-        bridge|factory) return 0 ;;
+        bridge|factory|boss) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -100,6 +102,13 @@ try:
     print('{} [{}] {}'.format(d.get('ts','')[:19], d.get('level','?'), d.get('msg','')[:40]))
 except: print('(parse error)')
 " 2>/dev/null
+            fi
+            ;;
+        boss)
+            if [ -f "${LOG_DIR}/boss-daemon.log" ]; then
+                tail -1 "${LOG_DIR}/boss-daemon.log" 2>/dev/null | cut -c1-60
+            else
+                tmux capture-pane -t "$(_session_name boss)" -p 2>/dev/null | grep -v '^$' | tail -1 | cut -c1-60
             fi
             ;;
     esac
@@ -269,7 +278,7 @@ cmd_logs() {
 
     if [ -z "$svc" ]; then
         echo "Usage: daemon.sh logs <service> [lines]"
-        echo "Services: bridge, factory, healthcheck"
+        echo "Services: bridge, factory, boss, healthcheck"
         exit 1
     fi
 
@@ -287,6 +296,13 @@ cmd_logs() {
                 tail -n "$lines" "${LOG_DIR}/feature-factory.jsonl"
             else
                 echo "(no factory log found)"
+            fi
+            ;;
+        boss)
+            if [ -f "${LOG_DIR}/boss-daemon.log" ]; then
+                tail -n "$lines" "${LOG_DIR}/boss-daemon.log"
+            else
+                echo "(no boss-daemon.log yet)"
             fi
             ;;
         healthcheck)
@@ -365,9 +381,9 @@ usage() {
 Usage: daemon.sh <command> [args]
 
 Commands:
-  start [all|bridge|factory]   Start service(s) in tmux
-  stop [all|bridge|factory]    Graceful stop + tmux kill
-  restart [all|bridge|factory] Stop then start
+  start [all|bridge|factory|boss]   Start service(s) in tmux
+  stop [all|bridge|factory|boss]    Graceful stop + tmux kill
+  restart [all|bridge|factory|boss] Stop then start
   status                       Show all service states
   logs <service> [lines]       Tail service logs
   install                      Install launchd healthcheck
