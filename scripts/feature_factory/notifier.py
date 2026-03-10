@@ -68,6 +68,7 @@ def notify_approval_request(
         "design_plan": "설계 계획 승인",
         "testing_to_stable": "Testing → Stable 승인",
         "coding_plan": "구현 계획 승인",
+        "coding_to_done": "구현 완료 승인",
     }
     label = gate_labels.get(gate_type, gate_type)
 
@@ -149,6 +150,7 @@ def notify_approval_timeout(task_id: int, title: str, gate_type: str) -> Optiona
         "design_plan": "설계 계획 승인",
         "testing_to_stable": "Testing → Stable 승인",
         "coding_plan": "구현 계획 승인",
+        "coding_to_done": "구현 완료 승인",
     }
     label = gate_labels.get(gate_type, gate_type)
     message = (
@@ -168,6 +170,7 @@ def notify_revision_request(
         "design_plan": "설계 계획 수정",
         "testing_to_stable": "Testing 수정",
         "coding_plan": "구현 계획 수정",
+        "coding_to_done": "구현 수정",
     }
     label = gate_labels.get(gate_type, gate_type)
     links = _worker_action_links(worker_id)
@@ -177,6 +180,17 @@ def notify_revision_request(
         f"워커에 수정 지시:\n"
         f"  /pool{worker_id} <수정 내용>\n\n"
         f"{links}"
+    )
+    return send_notification(message, channel=CHANNEL_APPROVAL, priority=3)
+
+
+def notify_validation_failure(task_id: int, title: str, validation) -> Optional[int]:
+    """산출물 검증 실패 알림 — APPROVAL 채널로 전송 (승인자 인지 필요)."""
+    message = (
+        f"[Feature Factory] 검증 실패\n"
+        f"Task #{task_id}: {title}\n"
+        f"Stage: {validation.stage}\n\n"
+        f"{validation.summary}"
     )
     return send_notification(message, channel=CHANNEL_APPROVAL, priority=3)
 
@@ -207,6 +221,8 @@ def _build_approval_summary(gate_type: str, context: dict) -> str:
             return _summary_plan(context)
         elif gate_type == "testing_to_stable":
             return _summary_testing(context)
+        elif gate_type == "coding_to_done":
+            return _summary_coding(context)
     except Exception as e:
         log.warning("Failed to build approval summary for gate %s: %s", gate_type, e, exc_info=True)
     return ""
@@ -279,7 +295,7 @@ def _summary_testing(ctx: dict) -> str:
     last_at = ctx.get("last_test_at") or ""
 
     if not runs:
-        return ""
+        return "\u26a0\ufe0f 테스트 실행 0회 — 테스트가 수행되지 않았습니다!"
 
     pct = round(successes / runs * 100)
     lines = [f"\U0001F9EA 테스트: {runs}회 실행, {successes}회 성공 ({pct}%)"]
@@ -287,6 +303,30 @@ def _summary_testing(ctx: dict) -> str:
         # ISO → 사람 읽기 좋은 형태 (초 제거)
         display_at = last_at[:16].replace("T", " ") if "T" in last_at else last_at
         lines.append(f"   마지막 실행: {display_at}")
+
+    return "\n".join(lines)
+
+
+def _summary_coding(ctx: dict) -> str:
+    """coding_to_done: 변경 파일 목록 + 테스트 결과."""
+    from .artifact_validator import get_git_changed_files
+
+    lines = []
+    files = get_git_changed_files()
+    if files:
+        lines.append(f"\U0001f4e6 변경 파일: {len(files)}개")
+        for f in files[:8]:
+            lines.append(f"   {f}")
+        if len(files) > 8:
+            lines.append(f"   ... 외 {len(files) - 8}개")
+    else:
+        lines.append("\u26a0\ufe0f 변경 파일 없음")
+
+    test_runs = ctx.get("test_runs") or 0
+    test_successes = ctx.get("test_successes") or 0
+    if test_runs:
+        pct = round(test_successes / test_runs * 100)
+        lines.append(f"\U0001f9ea 테스트: {test_runs}회 실행, {test_successes}회 성공 ({pct}%)")
 
     return "\n".join(lines)
 

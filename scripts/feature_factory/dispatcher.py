@@ -26,6 +26,7 @@ from . import notifier
 from . import report
 from . import dashboard
 from . import session_scanner
+from . import artifact_validator
 
 # Import msgbus
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -322,30 +323,59 @@ def _handle_stage_complete(task_id: int, stage: str, sender: str) -> None:
         approval_handler.request_approval(task_id, title, "spec_to_queued", context=context)
 
     elif stage == "designing":
-        # designing done → advance to testing
+        # designing done → validate artifacts → advance to testing
+        if not _check_artifacts(task_id, stage, title):
+            return
         pm.advance_stage(task_id, "testing")
         _try_assign_worker(task_id, title, "testing")
 
     elif stage == "testing":
-        # testing done → request approval to stable
+        # testing done → validate artifacts → request approval to stable
+        if not _check_artifacts(task_id, stage, title):
+            return
         notifier.notify_stage_complete(task_id, title, "testing")
         context = result.data if result.success else None
         approval_handler.request_approval(task_id, title, "testing_to_stable", context=context)
 
     elif stage == "coding":
-        # coding done → advance to done
-        pm.advance_stage(task_id, "done")
-        db.log_event(task_id, "feature_done", {"title": title})
+        # coding done → validate artifacts → request approval (coding_to_done)
+        if not _check_artifacts(task_id, stage, title):
+            return
+        notifier.notify_stage_complete(task_id, title, "coding")
+        context = result.data if result.success else None
+        approval_handler.request_approval(task_id, title, "coding_to_done", context=context)
 
-        # Generate production report
-        try:
-            report_path = report.generate_report(task_id, title)
-            if report_path:
-                db.log_event(task_id, "report_generated", {"path": report_path})
-        except Exception as e:
-            log.error("Report generation failed for task %d: %s", task_id, e)
 
-        notifier.notify_feature_done(task_id, title)
+# ── Artifact Validation ─────────────────────────────────────────────────────
+
+MAX_VALIDATION_RETRIES = 3
+
+
+def _check_artifacts(task_id: int, stage: str, title: str) -> bool:
+    """Validate stage artifacts. Returns True if valid, False if blocked.
+
+    3회 연속 실패 시 에러 알림을 보내고 재할당을 중단한다.
+    """
+    validation = artifact_validator.validate_stage_artifacts(task_id, stage, title)
+    if validation.valid:
+        return True
+
+    db.log_event(task_id, "validation_failed", {"stage": stage, "summary": validation.summary})
+    failure_count = db.count_events(task_id, "validation_failed", stage=stage)
+
+    if failure_count >= MAX_VALIDATION_RETRIES:
+        notifier.notify_error(
+            task_id, title,
+            f"{stage} 검증 {failure_count}회 연속 실패 — 수동 확인 필요\n{validation.summary}",
+        )
+        log.error(
+            "Validation failed %d times: task=%d stage=%s — manual review needed",
+            failure_count, task_id, stage,
+        )
+    else:
+        notifier.notify_validation_failure(task_id, title, validation)
+
+    return False
 
 
 # ── Token Scanning ──────────────────────────────────────────────────────────

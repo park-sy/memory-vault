@@ -460,6 +460,28 @@ def log_event(
         return cur.lastrowid
 
 
+def count_events(
+    task_id: int, event_type: str, stage: Optional[str] = None,
+    db_path: str = FACTORY_DB_PATH,
+) -> int:
+    """Count events of given type for a task. Optionally filter by stage in detail JSON."""
+    with connect(db_path) as conn:
+        if stage:
+            row = conn.execute(
+                """SELECT COUNT(*) FROM factory_events
+                   WHERE task_id = ? AND event_type = ?
+                   AND json_extract(detail, '$.stage') = ?""",
+                (task_id, event_type, stage),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT COUNT(*) FROM factory_events
+                   WHERE task_id = ? AND event_type = ?""",
+                (task_id, event_type),
+            ).fetchone()
+        return row[0] if row else 0
+
+
 def get_last_event_time(
     task_id: int, event_type: str, db_path: str = FACTORY_DB_PATH,
 ) -> Optional[datetime]:

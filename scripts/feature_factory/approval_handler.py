@@ -10,6 +10,7 @@ from . import db
 from .config import APPROVAL_GATES, APPROVAL_TIMEOUT, get_runtime_int
 from . import notifier
 from . import pipeline_manager as pm
+from . import report
 
 log = logging.getLogger("factory.approval")
 
@@ -118,6 +119,8 @@ def _process_approve(approval: db.PendingApproval) -> bool:
         result = pm.approve_stable(task_id)
     elif cli_cmd == "approve-plan":
         result = pm.approve_plan(task_id)
+    elif cli_cmd == "approve-done":
+        result = pm.advance_stage(task_id, "done")
     else:
         log.error("Unknown CLI command: %s", cli_cmd)
         return False
@@ -132,6 +135,21 @@ def _process_approve(approval: db.PendingApproval) -> bool:
     db.log_event(task_id, "approval_res", {
         "gate_type": gate_type, "resolution": "approved",
     })
+
+    # coding_to_done: report 생성 + 완료 알림
+    if cli_cmd == "approve-done":
+        title = f"Task #{task_id}"
+        detail = pm.get_task_detail(task_id)
+        if detail.success:
+            title = detail.data.get("title", title)
+        db.log_event(task_id, "feature_done", {"title": title})
+        try:
+            report_path = report.generate_report(task_id, title)
+            if report_path:
+                db.log_event(task_id, "report_generated", {"path": report_path})
+        except Exception as e:
+            log.error("Report generation failed for task %d: %s", task_id, e)
+        notifier.notify_feature_done(task_id, title)
 
     log.info("Approved: task=%d, gate=%s", task_id, gate_type)
     return True

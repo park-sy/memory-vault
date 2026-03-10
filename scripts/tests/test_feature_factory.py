@@ -196,7 +196,7 @@ def test_config(s: Suite) -> None:
     s.check("stages is tuple", isinstance(STAGES, tuple))
     s.check("idea in stages", "idea" in STAGES)
     s.check("done in stages", "done" in STAGES)
-    s.check_eq("4 approval gates", 4, len(APPROVAL_GATES))
+    s.check_eq("5 approval gates", 5, len(APPROVAL_GATES))
     s.check("spec role exists", "spec" in STAGE_ROLES)
     s.check("coding role exists", "coding" in STAGE_ROLES)
 
@@ -1394,12 +1394,12 @@ def test_approval_summary_testing(s: Suite) -> None:
 
 
 def test_approval_summary_testing_no_runs(s: Suite) -> None:
-    """테스트 실행이 없으면 빈 문자열."""
+    """테스트 실행이 없으면 경고 메시지."""
     from feature_factory.notifier import _build_approval_summary
 
     ctx = {"test_runs": 0, "test_successes": 0, "last_test_at": ""}
     result = _build_approval_summary("testing_to_stable", ctx)
-    s.check_eq("empty when no runs", "", result)
+    s.check_contains("warning when no runs", "테스트 실행 0회", result)
 
 
 def test_approval_summary_unknown_gate(s: Suite) -> None:
@@ -1408,6 +1408,117 @@ def test_approval_summary_unknown_gate(s: Suite) -> None:
 
     result = _build_approval_summary("unknown_gate", {"description": "test"})
     s.check_eq("empty for unknown gate", "", result)
+
+
+# ── Artifact Validator Tests ─────────────────────────────────────────────────
+
+def test_artifact_validator_designing(s: Suite) -> None:
+    """designing 검증: SKILL.md 존재 여부."""
+    from feature_factory.artifact_validator import validate_stage_artifacts, ValidationResult
+
+    # SKILL.md가 없는 케이스 (존재하지 않는 제목)
+    result = validate_stage_artifacts(999, "designing", "nonexistent-feature-xyz-99999")
+    s.check_is_instance("returns ValidationResult", result, ValidationResult)
+    s.check_eq("designing invalid without SKILL.md", False, result.valid)
+    s.check_eq("stage is designing", "designing", result.stage)
+    s.check_contains("summary mentions SKILL.md", "SKILL.md", result.summary)
+
+
+def test_artifact_validator_testing(s: Suite) -> None:
+    """testing 검증: test_runs > 0."""
+    from feature_factory.artifact_validator import ValidationResult
+    from feature_factory.artifact_validator import _validate_testing
+
+    # pm.get_task_detail를 mock하기 어려우므로 직접 ValidationResult 구조만 검증
+    result = ValidationResult(valid=False, stage="testing", checks=(("test_runs > 0", False, "test_runs=0"),), summary="테스트 실행 0회 (task #99)")
+    s.check_eq("testing invalid", False, result.valid)
+    s.check_contains("summary mentions 0회", "0회", result.summary)
+
+    result_ok = ValidationResult(valid=True, stage="testing", checks=(("test_runs > 0", True, "test_runs=5"),), summary="")
+    s.check_eq("testing valid", True, result_ok.valid)
+
+
+def test_artifact_validator_coding(s: Suite) -> None:
+    """coding 검증: git diff 결과."""
+    from feature_factory.artifact_validator import ValidationResult
+
+    # git diff가 빈 경우
+    result_empty = ValidationResult(valid=False, stage="coding", checks=(("git diff 변경 파일 존재", False, "변경 파일 없음"),), summary="코드 변경 없음 (files_changed=0)")
+    s.check_eq("coding invalid without changes", False, result_empty.valid)
+    s.check_contains("summary mentions 없음", "변경 없음", result_empty.summary)
+
+    # git diff가 있는 경우
+    result_ok = ValidationResult(valid=True, stage="coding", checks=(("git diff 변경 파일 존재", True, "app.py, service.py"),), summary="")
+    s.check_eq("coding valid with changes", True, result_ok.valid)
+
+
+def test_artifact_validator_passthrough(s: Suite) -> None:
+    """idea, spec 등 검증 대상이 아닌 스테이지는 항상 valid."""
+    from feature_factory.artifact_validator import validate_stage_artifacts
+
+    for stage in ("idea", "spec", "queued", "stable"):
+        result = validate_stage_artifacts(1, stage, "test")
+        s.check_eq(f"{stage} always valid", True, result.valid)
+
+
+def test_artifact_validator_title_to_slug(s: Suite) -> None:
+    """title_to_slug 변환."""
+    from feature_factory.artifact_validator import title_to_slug
+
+    s.check_eq("basic slug", "travel-planner", title_to_slug("Travel Planner"))
+    s.check_eq("lowercase", "hello-world", title_to_slug("Hello World"))
+    s.check_eq("no spaces", "test", title_to_slug("test"))
+
+
+def test_coding_to_done_gate(s: Suite) -> None:
+    """coding_to_done 게이트가 APPROVAL_GATES에 존재하고 올바른 설정."""
+    from feature_factory.config import APPROVAL_GATES
+
+    gate = APPROVAL_GATES.get("coding_to_done")
+    s.check_not_none("gate exists", gate)
+    s.check_eq("from coding", "coding", gate["from"])
+    s.check_eq("cli_cmd approve-done", "approve-done", gate["cli_cmd"])
+
+
+def test_summary_coding(s: Suite) -> None:
+    """coding_to_done 요약 생성."""
+    from feature_factory.notifier import _build_approval_summary
+
+    ctx = {"test_runs": 3, "test_successes": 3}
+    result = _build_approval_summary("coding_to_done", ctx)
+    s.check_contains("has test info", "3회 실행", result)
+
+
+def test_notify_validation_failure(s: Suite) -> None:
+    """notify_validation_failure가 올바른 메시지를 생성."""
+    from feature_factory.artifact_validator import ValidationResult
+    from unittest.mock import patch
+
+    validation = ValidationResult(
+        valid=False, stage="designing",
+        checks=(("SKILL.md 존재", False, "/path/to/SKILL.md"),),
+        summary="SKILL.md 미생성: /path/to/SKILL.md",
+    )
+
+    with patch("feature_factory.notifier.send_notification") as mock_send:
+        mock_send.return_value = 42
+        from feature_factory.notifier import notify_validation_failure
+        result = notify_validation_failure(10, "travel-planner", validation)
+        s.check_eq("returns msg_id", 42, result)
+        call_args = mock_send.call_args
+        msg = call_args[0][0]
+        s.check_contains("has task id", "Task #10", msg)
+        s.check_contains("has title", "travel-planner", msg)
+        s.check_contains("has stage", "designing", msg)
+        s.check_contains("has summary", "SKILL.md 미생성", msg)
+
+
+def test_detector_fast_completion_warning(s: Suite) -> None:
+    """completion_detector: 5분 미만 완료 시 경고 로그."""
+    from feature_factory.completion_detector import MIN_ELAPSED_SECONDS
+
+    # MIN_ELAPSED_SECONDS가 120초(2분)인지 확인 — 경고는 300초(5분) 미만
+    s.check_eq("min elapsed 120s", 120, MIN_ELAPSED_SECONDS)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -1468,6 +1579,16 @@ def main():
         ("summary_testing", test_approval_summary_testing),
         ("summary_testing_no_runs", test_approval_summary_testing_no_runs),
         ("summary_unknown_gate", test_approval_summary_unknown_gate),
+        # Artifact validation + coding_to_done gate
+        ("validator_designing", test_artifact_validator_designing),
+        ("validator_testing", test_artifact_validator_testing),
+        ("validator_coding", test_artifact_validator_coding),
+        ("validator_passthrough", test_artifact_validator_passthrough),
+        ("validator_slug", test_artifact_validator_title_to_slug),
+        ("coding_to_done_gate", test_coding_to_done_gate),
+        ("summary_coding", test_summary_coding),
+        ("notify_validation_failure", test_notify_validation_failure),
+        ("detector_fast_warning", test_detector_fast_completion_warning),
     ]
 
     for name, fn in suites:

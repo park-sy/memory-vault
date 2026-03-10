@@ -2,8 +2,8 @@
 type: clone-data
 subtype: decision-log
 created: 2026-02-22
-last_updated: 2026-03-08
-total_entries: 38
+last_updated: 2026-03-11
+total_entries: 40
 tags: [decision-clone, decisions]
 ---
 
@@ -347,6 +347,24 @@ tags: [decision-clone, decisions]
 - **options**: tmux-attach:// + SSH 커맨드, tmux 커맨드만, remote-control URL 자동 생성
 - **chosen**: 있을텐데, 몇가지 보내봐 테스트하게.
 - **rationale**: 있을텐데, 몇가지 보내봐 테스트하게.
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-039 | uncategorized | 2026-03-11
+- **context**: 오늘 체크인이 힘들었던 건 어디서 한 거야? (경로에 따라 수정 위치가 달라짐)
+- **options**: 텔레그램 자동 체크인, 상사 모드 (이 세션), 둘 다
+- **chosen**: 텔레그램 자동 체크인
+- **rationale**: auto-captured
+- **confidence**: medium
+- **outcome**: pending
+- **tags**: auto-captured
+
+### D-040 | uncategorized | 2026-03-11
+- **context**: 질문 자체를 없애는 게 아니라, 어떤 톤을 원해?
+- **options**: 질문 1개 이하, 질문 허용, 핵심만, 체크인은 일방향
+- **chosen**: 질문 허용, 핵심만
+- **rationale**: auto-captured
 - **confidence**: medium
 - **outcome**: pending
 - **tags**: auto-captured

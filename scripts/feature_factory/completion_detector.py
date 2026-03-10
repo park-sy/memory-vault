@@ -69,6 +69,11 @@ def check_completions() -> int:
 
         # 완료 감지 — dispatcher로 직접 전달
         _detected.add(assignment.id)
+        if elapsed < 300 and assignment.stage in ("designing", "testing", "coding"):
+            log.warning(
+                "Suspiciously fast completion: assignment=%d, task=%d, stage=%s, elapsed=%ds — artifact validation will verify",
+                assignment.id, assignment.task_id, assignment.stage, int(elapsed),
+            )
         log.info(
             "Completion detected: assignment=%d, worker=%d, task=%d, stage=%s, elapsed=%ds",
             assignment.id, assignment.worker_id, assignment.task_id,

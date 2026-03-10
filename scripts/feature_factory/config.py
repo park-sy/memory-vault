@@ -49,6 +49,7 @@ APPROVAL_GATES = {
     "design_plan":      {"from": "designing", "cli_cmd": "approve-plan"},
     "testing_to_stable": {"from": "testing", "cli_cmd": "approve-stable"},
     "coding_plan":      {"from": "coding",  "cli_cmd": "approve-plan"},
+    "coding_to_done":   {"from": "coding",  "cli_cmd": "approve-done"},
 }
 
 # Stage → worker role mapping
